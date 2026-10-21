@@ -451,4 +451,14 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
   }
 
   pintar();
+
+  // A fila manda "#acao=T03" quando o próximo passo precisa de informação: em vez de executar
+  // pela metade lá, ela traz quem clicou para cá e o formulário certo já abre. O id some da barra
+  // de endereço depois, para um F5 não reabrir o formulário de uma ação já feita.
+  const pedida = /^#acao=([A-Z0-9]+)$/.exec(location.hash)?.[1];
+  if (pedida) {
+    history.replaceState(null, '', location.pathname + location.search);
+    const t = F.transicoesDe(d.sol, ctx.papeis, ctx.ator).find((x) => x.id === pedida);
+    if (t) executar(t);
+  }
 });

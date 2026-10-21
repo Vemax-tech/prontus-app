@@ -1,7 +1,8 @@
 // PRONTUS — visão geral operacional. Todos os números saem dos dados; nenhum é decorativo, e cada
 // indicador mostra embaixo o critério de contagem. Indicador sem critério é opinião.
 import * as F from '../fluxo.js';
-import { listar } from '../dados.js';
+import { listar, configAtual } from '../dados.js';
+import { situacao, atrasadas, explicar } from '../prazos.js';
 import { start, h, run, pageHead, badge, stat, stats, rowbar, nota, icon, desde, corEtapa, horasNa } from '../ui.js';
 import { PAPEIS } from '../permissoes.js';
 
@@ -17,6 +18,7 @@ export const init = () => start('', 'Visão geral', async (ctx, view) => {
     run(listar('solicitacoes')), run(listar('tarefas')), run(listar('prontuarios')),
     run(listar('documentos')), run(listar('entregas')),
   ]);
+  const metas = configAtual().metas;
   const abertas = sols.filter(F.aberta);
   const emEtapa = (...e) => abertas.filter((s) => e.includes(s.etapa));
   const minimo = !ctx.podeCompleto('dashboard');   // Arquivo e Médico veem a versão reduzida
@@ -32,7 +34,10 @@ export const init = () => start('', 'Visão geral', async (ctx, view) => {
       stat({ k: 'Aguardando médico', v: emEtapa('aguardando_medico', 'aguardando_esclarecimento').length, c: 'inclui pedidos de esclarecimento', href: lista('etapa=aguardando_medico') }),
       stat({ k: 'Abertas', v: abertas.length, c: 'etapa não é concluída nem cancelada', href: lista('') })]
     : [stat({ k: 'Abertas', v: abertas.length, c: 'etapa não é concluída nem cancelada', href: lista('') }),
-      stat({ k: 'Em atendimento', v: abertas.filter((s) => !['aberta', 'em_triagem'].includes(s.etapa)).length, c: 'abertas que já saíram de "Aberta"', href: lista('') }),
+      // No lugar de "Em atendimento", que era derivável de "Abertas" e não pedia ação nenhuma:
+      // o indicador que o plano pede desde o MVP. O critério embaixo diz de onde vem o número —
+      // é a meta que a clínica definiu, não um prazo que o sistema inventou.
+      stat({ k: 'Paradas além da meta', v: atrasadas(abertas, metas).length, c: 'passaram do prazo definido em Configurações', tipo: atrasadas(abertas, metas).length ? 'crit' : 'ok', href: lista('prazo=atrasada') }),
       stat({ k: 'Aguardando prontuário', v: emEtapa('aguardando_prontuario', 'prontuario_em_transito').length, c: 'aguardando ou em trânsito', tipo: 'warn', href: lista('etapa=aguardando_prontuario') }),
       stat({ k: 'Aguardando Recepção', v: emEtapa('prontuario_na_recepcao', 'retorno_disponivel').length, c: 'conferir ou receber retorno', href: lista('etapa=prontuario_na_recepcao') }),
       stat({ k: 'Aguardando médico', v: emEtapa('aguardando_medico', 'aguardando_esclarecimento').length, c: 'inclui esclarecimentos', tipo: 'warn', href: lista('etapa=aguardando_medico') }),
@@ -40,20 +45,36 @@ export const init = () => start('', 'Visão geral', async (ctx, view) => {
       stat({ k: 'Aguardando contato', v: emEtapa('aguardando_contato_paciente').length, c: 'paciente ainda não foi informado', href: lista('etapa=aguardando_contato_paciente') }),
       stat({ k: 'Prontuários a devolver', v: prontPendentes.length, c: 'independe da etapa da solicitação', tipo: prontPendentes.length ? 'warn' : '', href: ROOT + 'prontuarios/' })];
 
-  // ---------- mais tempo parado (em vez de "atrasadas": não existe meta de prazo definida)
-  const antigas = [...abertas].sort((a, b) => horasNa(b.etapa_desde) - horasNa(a.etapa_desde)).slice(0, 8);
-  const paradas = painel('Mais tempo parado na etapa',
-    h('a', { class: 'btn sm', href: lista('') }, 'Ver todas'),
-    nota('', 'Não existe indicador de "atrasada" ainda: as metas de prazo por etapa não foram definidas. Até lá mostramos o que é fato — o tempo parado.'),
-    antigas.length
-      ? h('div', { style: 'margin-top:10px' }, antigas.map((s) => h('div', { class: 'item' },
-        h('div', {},
-          h('a', { class: 'id', href: ROOT + `solicitacoes/detalhe.html?id=${s.id}` }, '#' + s.protocolo),
-          h('div', { class: 'sub' }, F.TIPO_CURTO[s.tipo])),
-        h('div', { class: 'o' }, F.proximaAcao(s).texto),
-        h('div', { class: 'st' },
-          badge(F.ETAPAS[s.etapa], corEtapa(s.etapa)),
-          h('span', { class: 'age' + (horasNa(s.etapa_desde) > 24 ? ' tarde' : '') }, desde(s.etapa_desde))))))
+  // ---------- pedidos parados além da meta (seção 6 do plano: "pedido parado dá alerta")
+  // Ordenado pelo EXCEDENTE, não pelo tempo total: o que passou mais da própria meta é o que
+  // precisa de atenção primeiro. Uma entrega parada há 20 h com meta de 24 h não é um problema;
+  // um caso com o médico há 5 h, com meta de 2 h, é.
+  const atrasos = atrasadas(abertas, metas);
+  const naLista = atrasos.length
+    ? atrasos.slice(0, 8).map((x) => x.sol)
+    : [...abertas].sort((a, b) => horasNa(b.etapa_desde) - horasNa(a.etapa_desde)).slice(0, 8);
+  const semMeta = abertas.filter((s) => situacao(s, metas).estado === 'sem_meta').length;
+  const paradas = painel(atrasos.length ? 'Pedidos parados além da meta' : 'Mais tempo parado na etapa',
+    h('a', { class: 'btn sm', href: lista(atrasos.length ? 'prazo=atrasada' : '') }, 'Ver todas'),
+    atrasos.length
+      ? nota('crit', `${atrasos.length} ${atrasos.length === 1 ? 'pedido passou' : 'pedidos passaram'} da meta da própria etapa. A ordem aqui é pelo quanto cada um excedeu, não pelo tempo total.`)
+      : nota('', semMeta
+        ? `Nada atrasado agora. ${semMeta} ${semMeta === 1 ? 'caso está' : 'casos estão'} em etapa sem meta definida — defina em Configurações para o alerta valer ali também.`
+        : 'Nada atrasado agora: todas as etapas abertas estão dentro da meta definida pela clínica.'),
+    naLista.length
+      ? h('div', { style: 'margin-top:10px' }, naLista.map((s) => {
+        const sit = situacao(s, metas);
+        return h('div', { class: 'item' },
+          h('div', {},
+            h('a', { class: 'id', href: ROOT + `solicitacoes/detalhe.html?id=${s.id}` }, '#' + s.protocolo),
+            h('div', { class: 'sub' }, F.TIPO_CURTO[s.tipo])),
+          h('div', { class: 'o' }, F.proximaAcao(s).texto,
+            sit.estado !== 'sem_meta' ? h('div', { class: 'micro muted' }, explicar(s, metas)) : null),
+          h('div', { class: 'st' },
+            sit.rotulo ? badge(sit.rotulo, sit.estado === 'atrasada' ? 'crit' : 'warn') : null,
+            badge(F.ETAPAS[s.etapa], corEtapa(s.etapa)),
+            h('span', { class: 'age' + (sit.estado === 'atrasada' ? ' tarde' : '') }, desde(s.etapa_desde))));
+      }))
       : h('p', { class: 'small muted', style: 'margin-top:10px' }, 'Nada em aberto.'));
 
   // ---------- onde o trabalho está parado (uma série: o comprimento é a quantidade)

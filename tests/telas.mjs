@@ -220,6 +220,11 @@ if (erros.length) console.log(`console.error inesperado: ${erros.length}`);
 if (falhas.length || erros.length) {
   console.log(`✗ ${falhas.length} falha(s); console.error: ${erros.length}`);
   falhas.forEach((f) => console.log(' - ' + f));
+  dom.window.close();
   process.exit(1);
 }
 console.log(`✓ tudo passou; console.error: 0`);
+// As telas de fila instalam um relógio de novidades (js/atualiza.js). Fechar a janela do jsdom
+// limpa os timers; sem isso o Node fica vivo depois do último check, esperando um intervalo que
+// só faz sentido num navegador aberto.
+dom.window.close();

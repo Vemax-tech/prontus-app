@@ -7,7 +7,7 @@
 import { criarIcon, criarRun, empty as emptyBase, h, toast } from './base/dom.js';
 import { papelAtual, definirPapel, papeisAtuais, atorAtual, PAPEIS } from './papel.js';
 import { pode, podeCompleto } from './permissoes.js';
-import { nomeDe, usuarioPor, reiniciar } from './dados.js';
+import { nomeDe, usuarioPor, reiniciar, avisosDoPapel, marcarAvisosLidos } from './dados.js';
 import { dadosDasFilas, contarFilas } from './filas.js';
 import { temaAtual, alternarTema, TEMAS } from './tema.js';
 import { MARCA, MONOGRAMA } from './marca.js';
@@ -37,6 +37,7 @@ const ICONS = {
   print: '<path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
   sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
   lua: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  engrenagem: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5a1.6 1.6 0 0 1 1.6 1.6v.4a1.4 1.4 0 0 0 2.1 1.2l.3-.2a1.6 1.6 0 1 1 1.6 2.8l-.3.2a1.4 1.4 0 0 0 .5 2.4l.4.1a1.6 1.6 0 1 1 0 3.2l-.4.1a1.4 1.4 0 0 0-.5 2.4l.3.2a1.6 1.6 0 1 1-1.6 2.8l-.3-.2a1.4 1.4 0 0 0-2.1 1.2v.4a1.6 1.6 0 1 1-3.2 0v-.4a1.4 1.4 0 0 0-2.1-1.2l-.3.2a1.6 1.6 0 1 1-1.6-2.8l.3-.2a1.4 1.4 0 0 0-.5-2.4l-.4-.1a1.6 1.6 0 1 1 0-3.2l.4-.1a1.4 1.4 0 0 0 .5-2.4l-.3-.2a1.6 1.6 0 1 1 1.6-2.8l.3.2a1.4 1.4 0 0 0 2.1-1.2v-.4A1.6 1.6 0 0 1 12 2.5Z"/>',
 };
 export const icon = criarIcon(ICONS, 'marca');
 export const empty = (msg) => emptyBase(msg, icon('inbox'));
@@ -92,6 +93,9 @@ const NAV = [
   ['registros/', 'Documentos', 'file', 'comunicacao_ver', false],
   ['relatorios/', 'Relatórios', 'chart', 'relatorios', true],
   ['permissoes/', 'Permissões', 'shield', null, false],
+  // Configurações NÃO entra aqui: é de administração, usada de vez em quando, e um nono item
+  // não cabe na barra nem em 1680 px — espremeria a navegação que a equipe usa o dia inteiro
+  // para acomodar uma tela que se abre uma vez por mês. Fica como engrenagem, ao lado do perfil.
 ];
 
 /** Assinatura da marca: serifa na palavra, monograma em petróleo. */
@@ -128,6 +132,53 @@ function botaoTema() {
   });
   pinta(b);
   return b;
+}
+
+/**
+ * Sininho de avisos. É o que o plano do projeto põe no lugar do grupo do WhatsApp: o aviso nasce
+ * do próprio fluxo, tem destinatário (o papel) e tem não-lido — coisas que uma mensagem solta num
+ * grupo nunca teve. Abre uma lista, cada linha leva ao caso, e abrir a lista marca como lido.
+ */
+function sinoDeAvisos(ctx) {
+  const papel = ctx.papeis[0];
+  const lista = h('div', { class: 'avisos', hidden: '' });
+  const pino = h('span', { class: 'pill' });
+  const botao = h('button', {
+    class: 'btn icon', type: 'button', 'aria-haspopup': 'true', 'aria-expanded': 'false',
+    onclick: (e) => abrir(e.currentTarget),
+  }, icon('alert'), pino);
+
+  function contar() {
+    const n = avisosDoPapel(papel, { somenteNaoLidos: true }).length;
+    pino.textContent = n > 9 ? '9+' : String(n);
+    pino.hidden = !n;
+    botao.setAttribute('aria-label', n ? `${n} aviso(s) não lido(s)` : 'Avisos — nenhum não lido');
+    return n;
+  }
+
+  async function abrir(b) {
+    const mostrando = !lista.hidden;
+    if (mostrando) { lista.hidden = true; b.setAttribute('aria-expanded', 'false'); return; }
+    const todos = avisosDoPapel(papel).slice(0, 12);
+    lista.replaceChildren(
+      h('div', { class: 'ah' }, h('b', {}, 'Avisos para ' + PAPEIS[papel]),
+        h('span', { class: 'micro muted' }, todos.length ? `${todos.length} recentes` : 'nenhum')),
+      todos.length
+        ? h('ul', { class: 'ul-list' }, todos.map((a) => h('li', { class: a.lido_em ? 'lido' : '' },
+          h('a', { href: ROOT + `solicitacoes/detalhe.html?id=${a.solicitacao_id}` },
+            h('b', {}, '#' + a.protocolo), ' ', a.texto,
+            h('div', { class: 'micro muted' }, desde(a.criado_em))))))
+        : h('p', { class: 'small muted', style: 'padding:10px 12px' },
+          'Nada aqui. Os avisos aparecem sozinhos quando um caso entra na fila do seu papel.'));
+    lista.hidden = false;
+    b.setAttribute('aria-expanded', 'true');
+    // Abrir é ler: o sininho existe para zerar, não para acumular culpa.
+    await marcarAvisosLidos({ papel, ator: ctx.ator });
+    contar();
+  }
+
+  contar();
+  return h('div', { class: 'sino' }, botao, lista);
 }
 
 function quemSouEu() {
@@ -182,7 +233,12 @@ export async function start(key, title, render) {
   const view = h('main', { class: 'wrap', id: 'view' });
   app.replaceChildren(
     h('div', { class: 'topwrap' },
-      h('header', { class: 'top' }, burger, assinatura(), nav, h('div', { class: 'tools' }, botaoTema(), quemSouEu())),
+      h('header', { class: 'top' }, burger, assinatura(), nav, h('div', { class: 'tools' },
+        sinoDeAvisos(ctx),
+        ctx.pode('configuracoes')
+          ? h('a', { class: 'btn icon' + (key === 'configuracoes/' ? ' on' : ''), href: ROOT + 'configuracoes/', 'aria-label': 'Configurações da clínica', title: 'Configurações da clínica' }, icon('engrenagem'))
+          : null,
+        botaoTema(), quemSouEu())),
       faixaDemo()),
     view);
   document.title = `${title} — ${MARCA.produto}`;

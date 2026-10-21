@@ -1,7 +1,8 @@
 // PRONTUS — central de solicitações: listagem completa, com busca, filtros, ordenação e paginação.
 // É a tela onde a operação enxerga tudo de uma vez, e os dois fluxos convivem sem se misturar.
 import * as F from '../fluxo.js';
-import { listar, abrirSolicitacao, possivelDuplicidade, nomeDe, pacientePor, prontuarioPor } from '../dados.js';
+import { listar, abrirSolicitacao, possivelDuplicidade, nomeDe, pacientePor, prontuarioPor, configAtual } from '../dados.js';
+import { situacao, explicar } from '../prazos.js';
 import { start, h, run, pageHead, empty, badge, dataTable, filtros, contem, formModal, modal, fmtDate, qs, icon, desde, corEtapa, horasNa } from '../ui.js';
 
 const ROOT = new URL('../../', import.meta.url).href;
@@ -17,7 +18,9 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
   const lista = [...sols].sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em));
 
   // 'dono' = filtro de posse: vazio (todos), 'eu' ou 'livre'.
-  const f = { q: '', tipo: '', dono: '', etapa: qs('etapa') || '', prio: '', papel: '', abertas: qs('etapa') ? '' : '1' };
+  const metas = configAtual().metas;
+  // 'prazo' = situação perante a meta da etapa; chega pronto do painel por ?prazo=atrasada.
+  const f = { q: '', tipo: '', dono: '', prazo: qs('prazo') || '', etapa: qs('etapa') || '', prio: '', papel: '', abertas: qs('etapa') || qs('prazo') ? '' : '1' };
   const st = { sort: 'etapa_desde', dir: 1, page: 0 };
   const body = h('div');
 
@@ -64,9 +67,20 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
       h('div', { class: 'small muted' }, F.TIPO_CURTO[s.tipo])) },
     { key: 'paciente', label: 'Paciente', sort: (s) => nomePac(s).toLowerCase(), render: pacCell },
     { key: 'etapa', label: 'Etapa atual', sort: (s) => Object.keys(F.ETAPAS).indexOf(s.etapa), render: (s) => badge(F.ETAPAS[s.etapa], corEtapa(s.etapa)) },
-    { key: 'etapa_desde', label: 'Tempo na etapa', sort: (s) => -horasNa(s.etapa_desde), render: (s) => (F.aberta(s)
-      ? h('span', { style: horasNa(s.etapa_desde) > 24 ? 'color:var(--crit);font-weight:600' : null }, desde(s.etapa_desde))
-      : h('span', { class: 'small muted' }, '—')) },
+    // Ordena pelo EXCEDENTE sobre a meta, não pelo tempo bruto: o que passou mais do próprio
+    // prazo vem primeiro. Sem meta, cai para o tempo parado, que é o que se sabe.
+    { key: 'etapa_desde',
+      label: 'Tempo na etapa',
+      sort: (s) => { const x = situacao(s, metas); return x.meta === null ? -horasNa(s.etapa_desde) / 1e3 : -(x.horas - x.meta); },
+      render: (s) => {
+        if (!F.aberta(s)) return h('span', { class: 'small muted' }, '—');
+        const sit = situacao(s, metas);
+        const cor = sit.estado === 'atrasada' ? 'color:var(--crit);font-weight:600'
+          : sit.estado === 'atencao' ? 'color:var(--warn);font-weight:600' : null;
+        return h('span', {},
+          h('span', { style: cor }, desde(s.etapa_desde)),
+          sit.rotulo ? h('div', { class: 'micro', style: 'color:var(--ink-3)' }, explicar(s, metas)) : null);
+      } },
     { key: 'prox', label: 'Próxima ação de', sort: (s) => F.proximaAcao(s).papel || 'zz', render: (s) => {
       const p = F.proximaAcao(s);
       return p.papel ? badge(p.papel, 'dim') : h('span', { class: 'small muted' }, '—');
@@ -109,11 +123,14 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
       && (!f.prio || s.prioridade === f.prio)
       && (!f.papel || F.proximaAcao(s).papel === f.papel)
       && (!f.dono || (f.dono === 'eu' ? s.assumido_por === ctx.ator : !s.assumido_por && F.aberta(s)))
+      && (!f.prazo || situacao(s, metas).estado === f.prazo)
       && contem([String(s.protocolo), s.relato, verPaciente ? nomePac(s) : '', F.TIPOS[s.tipo]], f.q));
     if (!shown.length) { body.replaceChildren(empty('Nenhuma solicitação com esses filtros.')); return; }
     body.replaceChildren(
       h('p', { class: 'small muted', style: 'margin-bottom:8px' }, `${shown.length} de ${lista.length} solicitações`),
-      dataTable({ cols, rows: shown, state: st, size: 12, onState: draw, vazio: empty('Nada aqui'), rowClass: (s) => (F.aberta(s) && horasNa(s.etapa_desde) > 48 ? 'late' : null) }));
+      dataTable({ cols, rows: shown, state: st, size: 12, onState: draw, vazio: empty('Nada aqui'), // "A linha fica vermelha na fila" (plano, seção 6) — agora pela meta da clínica, não por um
+      // limite fixo de 48 h que o código tinha escolhido sozinho.
+      rowClass: (s) => (situacao(s, metas).estado === 'atrasada' ? 'late' : null) }));
   }
 
   view.append(
@@ -127,6 +144,7 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
       { tipo: 'select', chave: 'etapa', rotulo: 'Todas as etapas', opcoes: Object.entries(F.ETAPAS) },
       { tipo: 'select', chave: 'papel', rotulo: 'Próxima ação de qualquer um', opcoes: [['Call Center', 'Call Center'], ['Arquivo', 'Arquivo'], ['Recepção', 'Recepção'], ['Médico', 'Médico']] },
       { tipo: 'select', chave: 'dono', rotulo: 'Qualquer responsável', opcoes: [['eu', 'Os que eu assumi'], ['livre', 'Sem dono']] },
+      { tipo: 'select', chave: 'prazo', rotulo: 'Qualquer prazo', opcoes: [['atrasada', 'Paradas além da meta'], ['atencao', 'Perto do prazo'], ['sem_meta', 'Etapa sem meta']] },
       { tipo: 'select', chave: 'prio', rotulo: 'Todas as prioridades', opcoes: Object.entries(PRIO) },
       { tipo: 'select', chave: 'abertas', rotulo: 'Abertas e encerradas', opcoes: [['1', 'Só em aberto']] },
     ], f, draw),

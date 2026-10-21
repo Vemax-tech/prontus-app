@@ -37,6 +37,39 @@
 }
 .navsep { width: 1px; height: 20px; background: var(--line); margin: 0 6px; flex: none; }
 
+/* Faixa de novidades: avisa que a fila mudou, sem redesenhar a tela por baixo de quem a usa. */
+.novidades {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px; padding: 8px 12px; font-size: .8125rem; color: var(--ink-2);
+  background: var(--wash); border: 1px solid var(--wash-2); border-radius: var(--r-2);
+}
+.novidades .i { width: 14px; height: 14px; color: var(--brand-3); vertical-align: -2px; margin-right: 6px; }
+/* `display: flex` acima vence o `display: none` que o navegador dá a [hidden]; sem esta linha a
+   faixa nasce visível e avisa de uma novidade que não houve. */
+.novidades[hidden] { display: none; }
+
+/* Sininho de avisos. A lista cai por cima do conteúdo, ancorada no botão. */
+.sino { position: relative; flex: none; }
+.sino .btn.icon { position: relative; }
+.sino .pill {
+  position: absolute; top: -5px; right: -5px; min-width: 16px; padding: 0 4px;
+  border-radius: 9px; background: var(--crit); color: var(--surface);
+  font-size: .625rem; font-weight: 700; line-height: 16px; text-align: center;
+}
+.avisos {
+  position: absolute; top: calc(100% + 7px); right: 0; z-index: 70; width: min(360px, calc(100vw - 32px));
+  max-height: 70vh; overflow: auto; background: var(--surface);
+  border: 1px solid var(--line-2); border-radius: var(--r-2); box-shadow: var(--shadow-up);
+}
+.avisos .ah { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+.avisos .ul-list li { padding: 0; border-bottom: 1px solid var(--line); }
+.avisos .ul-list li:last-child { border-bottom: 0; }
+.avisos .ul-list a { display: block; padding: 9px 12px; font-size: .8125rem; color: var(--ink); }
+.avisos .ul-list a:hover { background: var(--surface-3); }
+/* Lido não some: some do contador. Continua legível, só perde o destaque. */
+.avisos .ul-list li.lido a { color: var(--ink-3); }
+.avisos .ul-list li.lido b { font-weight: 500; }
+
 /* Quem sou eu agora: na demonstração é um seletor; em produção vira o nome de quem entrou. */
 .tools { display: flex; align-items: center; gap: 10px; margin-left: auto; flex: none; }
 .whoami { display: flex; align-items: center; gap: 8px; padding-left: 12px; border-left: 1px solid var(--line); }
@@ -182,11 +215,17 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
 /* Item de fila / de lista: três colunas (identificação, o que falta, estado). */
 .item { display: grid; grid-template-columns: minmax(130px, 200px) minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .item:last-child { border-bottom: 0; }
+/* "A linha fica vermelha na fila" quando o pedido passa da meta da etapa. Um fio na lateral,
+   não um fundo: o vermelho precisa marcar a linha sem apagar o que está escrito nela. */
+.item.late { box-shadow: inset 2px 0 0 var(--crit); padding-left: 10px; }
 .item .id { font-family: var(--font-mono); font-size: .8125rem; font-weight: 500; color: var(--ink); }
 .item .id:hover { color: var(--brand-2); text-decoration: underline; text-underline-offset: 2px; }
 .item .sub { font-size: .6875rem; color: var(--ink-3); margin-top: 1px; }
 .item .o { font-size: .8125rem; }
-.item .st { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+/* Com o botão de próximo passo na linha, esta faixa pode ficar longa: ela quebra em vez de
+   empurrar a página para o lado. Fila que rola na horizontal no celular não se usa. */
+.item .st { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; min-width: 0; }
+.item .st .btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
 .item .age { font-size: .6875rem; color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 48px; text-align: right; }
 .item .age.tarde { color: var(--crit); font-weight: 600; }
 @media (max-width: 720px) { .item { grid-template-columns: 1fr; gap: 4px; } .item .st { justify-content: flex-start; } }
@@ -221,13 +260,13 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
    enfeite (o descritor da marca), depois o nome de quem está logado, que o seletor ao lado já diz,
    e por último aperta o respiro dos itens. Abaixo de 1100 px a navegação vira gaveta e o problema
    deixa de existir. */
-@media (max-width: 1535px) { .mark em { display: none; } }
-@media (max-width: 1380px) { .whoami .t { display: none; } }
-@media (max-width: 1300px) { .top { gap: 12px; } .navi { padding: 0 8px; gap: 6px; } .navsep { margin: 0 3px; } }
-@media (max-width: 1200px) { .navi { padding: 0 6px; } .whoami { padding-left: 10px; } .whoami .avatar { display: none; } .whoami select { max-width: 150px; } }
+@media (max-width: 1620px) { .mark em { display: none; } }
+@media (max-width: 1460px) { .whoami .t { display: none; } }
+@media (max-width: 1380px) { .top { gap: 12px; } .navi { padding: 0 8px; gap: 6px; } .navsep { margin: 0 3px; } }
+@media (max-width: 1330px) { .navi { padding: 0 6px; } .whoami { padding-left: 10px; } .whoami .avatar { display: none; } .whoami select { max-width: 150px; } }
 
 /* ---------------------------------------------------------------- menu em tela estreita */
-@media (max-width: 1140px) {
+@media (max-width: 1270px) {
   .top { gap: 12px; }
   .burger { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; background: none; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--ink); }
   .nav {

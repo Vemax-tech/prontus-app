@@ -216,6 +216,21 @@ function semearSolicitacao(spec) {
       evNota(sol, dono, 'Caso assumido', `${nomeDe(dono)} assumiu a etapa "${F.ETAPAS[sol.etapa]}".`, sol.etapa_desde);
     }
   }
+
+  // Aviso de chegada na fila, para o sininho nascer com conteúdo. Em uso real ele é criado pela
+  // própria transição; aqui o roteiro monta o estado direto, então o aviso é montado junto.
+  // O caso já assumido chega LIDO: quem pegou o caso obviamente viu o aviso.
+  if (F.aberta(sol)) {
+    for (const papel of F.papeisDaEtapa(sol)) {
+      db.avisos.push({
+        id: uid('avi'), solicitacao_id: sol.id, protocolo: sol.protocolo,
+        para_papel: papel, tipo: 'chegou_na_fila', texto: F.proximaAcao(sol).texto,
+        criado_em: sol.etapa_desde,
+        lido_em: sol.assumido_por ? sol.etapa_desde : null,
+        lido_por: sol.assumido_por || null,
+      });
+    }
+  }
   return sol;
 }
 
@@ -239,24 +254,26 @@ function tarefa(sol, papel, titulo, estado, responsavel = null) {
 const ROTEIRO = [
   { tipo: 'duvida_correcao', ate: 'aberta', pac: 0, horas: 3, assumido: false, relato: 'Paciente diz que a posologia na receita está ilegível e quer confirmar a dose.' },
   { tipo: 'pedido_receita', ate: 'aberta', pac: 1, horas: 2, relato: 'Pede renovação da receita de uso contínuo.' },
-  { tipo: 'pedido_receita', ate: 'pedido_arquivo', pac: 2, horas: 26, assumido: false, relato: 'Pede nova receita; acabou a medicação nesta semana.', prioridade: 'alta' },
-  { tipo: 'duvida_correcao', ate: 'localizado', pac: 3, horas: 30, relato: 'Nome do medicamento parece trocado em relação ao que toma há dois anos.' },
+  { tipo: 'pedido_receita', ate: 'pedido_arquivo', pac: 2, horas: 3, assumido: false, relato: 'Pede nova receita; acabou a medicação nesta semana.', prioridade: 'alta' },
+  { tipo: 'duvida_correcao', ate: 'localizado', pac: 3, horas: 2, relato: 'Nome do medicamento parece trocado em relação ao que toma há dois anos.' },
   { tipo: 'pedido_receita', ate: 'entregue', pac: 4, horas: 10, assumido: false, relato: 'Pede receita para continuar o tratamento.' },
   { tipo: 'duvida_correcao', ate: 'recebido', pac: 5, horas: 8, relato: 'Quer saber se pode tomar os dois remédios no mesmo horário.' },
-  { tipo: 'pedido_receita', ate: 'ao_medico', pac: 6, horas: 20, relato: 'Receita vencida; pede emissão de nova via.', medico: 'u-me2' },
+  { tipo: 'pedido_receita', ate: 'ao_medico', pac: 6, horas: 1, relato: 'Receita vencida; pede emissão de nova via.', medico: 'u-me2' },
   { tipo: 'duvida_correcao', ate: 'ao_medico', pac: 7, horas: 48, relato: 'Receita sem a quantidade de dias de uso.', prioridade: 'alta' },
-  { tipo: 'duvida_correcao', ate: 'avaliado', pac: 8, horas: 14, relato: 'Dosagem divergente da que foi dita na consulta.', desfecho: 'corrigido', devolucao: 'devolvido' },
-  { tipo: 'pedido_receita', ate: 'avisado_grupo', pac: 9, horas: 12, relato: 'Pede receita de uso contínuo para três meses.', devolucao: 'recebido' },
+  { tipo: 'duvida_correcao', ate: 'avaliado', pac: 8, horas: 1, relato: 'Dosagem divergente da que foi dita na consulta.', desfecho: 'corrigido', devolucao: 'devolvido' },
+  { tipo: 'pedido_receita', ate: 'avisado_grupo', pac: 9, horas: 2, relato: 'Pede receita de uso contínuo para três meses.', devolucao: 'recebido' },
   // Reaproveitam pacientes cujo atendimento em aberto NÃO tirou o prontuário do arquivo (pac 0 e 1):
   // dá histórico ao paciente sem criar disputa de custódia.
-  { tipo: 'pedido_receita', ate: 'contato_paciente', pac: 0, horas: 36, relato: 'Segunda via da receita, perdeu a anterior.', resultadoContato: 'nao_atendeu', devolucao: 'arquivado' },
+  // Mais de 24 h de propósito: é o caso que mantém a janela de duplicidade (RF-04) fora do
+  // alcance de um pedido novo do mesmo paciente. Encurtar esta idade quebra esse cenário.
+  { tipo: 'pedido_receita', ate: 'contato_paciente', pac: 0, horas: 30, relato: 'Segunda via da receita, perdeu a anterior.', resultadoContato: 'nao_atendeu', devolucao: 'arquivado' },
   { tipo: 'duvida_correcao', ate: 'concluida', pac: 1, horas: 60, relato: 'Dúvida sobre jejum antes de tomar o medicamento.', devolucao: 'arquivado', cc: 'u-cc2' },
   // Daqui para baixo, um paciente por atendimento.
   { tipo: 'pedido_receita', ate: 'entrega', pac: 10, horas: 50, assumido: false, relato: 'Receita de uso contínuo; prefere retirar na clínica.', modo: 'fisica', entrega: 'orientada', devolucao: 'arquivado' },
-  { tipo: 'pedido_receita', ate: 'entrega', pac: 11, horas: 44, relato: 'Pede receita e aceita receber por mensagem.', modo: 'digital', entrega: 'tentado', devolucao: 'recebido', cc: 'u-cc2' },
+  { tipo: 'pedido_receita', ate: 'entrega', pac: 11, horas: 8, relato: 'Pede receita e aceita receber por mensagem.', modo: 'digital', entrega: 'tentado', devolucao: 'recebido', cc: 'u-cc2' },
   { tipo: 'pedido_receita', ate: 'concluida', pac: 12, horas: 90, relato: 'Renovação de receita, enviada digitalmente.', modo: 'digital', entrega: 'enviado', devolucao: 'arquivado' },
   { tipo: 'pedido_receita', ate: 'concluida', pac: 13, horas: 110, relato: 'Receita retirada presencialmente pelo filho, autorizado.', modo: 'fisica', entrega: 'retirada', devolucao: 'arquivado', cc: 'u-cc2' },
-  { tipo: 'pedido_receita', ate: 'avaliado', pac: 14, horas: 18, relato: 'Pede medicação que não consta no histórico.', desfecho: 'nao_aprovado', devolucao: 'arquivado' },
+  { tipo: 'pedido_receita', ate: 'avaliado', pac: 14, horas: 1, relato: 'Pede medicação que não consta no histórico.', desfecho: 'nao_aprovado', devolucao: 'arquivado' },
   { tipo: 'duvida_correcao', ate: 'ao_medico', pac: 15, horas: 72, relato: 'Pergunta se pode substituir por genérico.', prioridade: 'alta', assumido: false },
   // Fluxo 1 esperando o Call Center retornar ao paciente: é o caso em que a conclusão depende
   // de contato efetivo, e nenhuma tentativa frustrada basta (RN-06 + RN-12).

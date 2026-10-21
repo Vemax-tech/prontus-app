@@ -45,12 +45,14 @@ O roteiro de apresentação está em [`docs/roteiro-apresentacao.md`](docs/rotei
 ## Como está organizado
 
 ```
-index.html  filas/  minhafila/  solicitacoes/  prontuarios/  registros/  relatorios/  permissoes/
+index.html  filas/  minhafila/  solicitacoes/  prontuarios/  registros/  relatorios/  permissoes/  configuracoes/
 css/     tokens.css (identidade)  base.css (primitivas)  app.css (casca e telas)
 js/      marca.js   nome do produto, num lugar só
          fluxo.js   máquina de estados dos dois fluxos — puro, testável
          permissoes.js  matriz papel × recurso × ação — puro, testável
          filas.js   quais filas cada papel tem, e como se repartem entre as duas telas
+         prazos.js  metas por etapa e o alerta de pedido parado — puro, testável
+         atualiza.js a fila conferindo novidades sozinha, sem redesenhar por baixo de quem usa
          tema.js    escuro (padrão) ou claro — só troca um atributo em <html>
          dados.js   ÚNICO arquivo que a ida para produção substitui
          papel.js   quem está usando (na demonstração, um seletor)
@@ -67,6 +69,34 @@ scripts/verificar.mjs  scripts/cores.mjs  tests/telas.mjs
 `js/dados.js` guarda tudo em memória e devolve `{ data, error }` como um cliente de banco de verdade, de propósito: as telas usam o mesmo `run()` e **não mudam** quando a origem virar o Postgres. As funções (`moverSolicitacao`, `moverProntuario`, `registrarAvaliacao`…) são o espelho das funções que vão existir no banco.
 
 `js/fluxo.js` e `js/permissoes.js` são puros e espelham o que vai para o SQL. O cabeçalho de cada um diz, em letras garrafais, o que esta demonstração **não** é: regra que só existe no navegador não é regra. Em produção a tabela de transições, a matriz de permissões e a verificação vivem no banco, que recusa com o código `42501` — o navegador só evita mostrar botão que não funcionaria.
+
+---
+
+## O que o sistema faz sozinho
+
+O documento de planejamento do projeto pede, já no MVP, quatro coisas que dependem do sistema agir em vez de esperar alguém lembrar. Elas estão aqui:
+
+**Alerta de pedido parado.** Cada etapa tem uma meta de prazo. Passou da meta, o caso aparece como `Atrasada`, a linha ganha um fio vermelho na fila e entra no indicador do painel. A ordem é pelo **quanto cada caso excedeu a própria meta**, não pelo tempo total: uma entrega parada há 20 h com meta de 24 h não é problema; um caso com o médico há 5 h, com meta de 2 h, é.
+
+As metas vivem em **Configurações** e são da clínica. `js/prazos.js` traz valores propostos para o sistema nascer funcionando — só o de 2 h com o médico veio do plano; o resto é ponto de partida, e a tela diz isso em letras. Campo vazio desliga o alerta daquela etapa: melhor sem meta do que com uma meta inventada. Era por isso que, até aqui, o sistema se recusava a dizer "atrasada" e mostrava apenas "tempo parado" — a recusa estava certa, o que faltava era a meta.
+
+**Avisos dentro do sistema.** Quando o caso entra na etapa de outra equipe, aquela equipe é avisada — sem ninguém precisar lembrar de avisar. O aviso tem destinatário, tem não-lido e some do contador quando é lido, três coisas que uma mensagem solta num grupo nunca teve. Fica no sininho da barra superior.
+
+Não confunda com `comunicacoes`, que continua existindo pelo motivo oposto: ali se **registra o que foi feito fora** do sistema (a ligação ao paciente, o recado no grupo). O sistema não envia nada em `comunicacoes`; ele anota o que já aconteceu. Em `avisos` é o próprio sistema que avisa.
+
+**O próximo passo na própria fila.** É o princípio de tela do plano: *"cada pedido tem um único botão com o próximo passo"*. Um botão, nunca dois — `principal: true` em `js/fluxo.js` marca o caminho normal do processo, e as saídas que são exceção (cancelar, reabrir, pedir esclarecimento, não aprovar) continuam no detalhe, onde há espaço para explicar o que cada uma faz.
+
+Quando o passo precisa de informação — o texto publicado no grupo, o resultado do contato, a decisão clínica, um motivo — o botão **abre o caso já no formulário certo**, por `#acao=`. A fila nunca executa pela metade: ou faz o passo inteiro, ou entrega quem clicou no lugar de fazê-lo.
+
+**A fila se atualiza sozinha.** `js/atualiza.js` confere novidades a cada 12 segundos, dentro da faixa de 10 a 15 s que o plano define. Duas decisões importam mais que o intervalo: a tela **não** é redesenhada por baixo de quem a está usando — aparece uma faixa discreta e quem decide quando atualizar é quem está lendo —, e o relógio **para quando a aba não está à vista**. Em produção é aqui que entra o tempo real do Supabase, sem mexer em nenhuma tela.
+
+### Duas divergências que são decisão da clínica, não do código
+
+**Conclusão × arquivamento.** O plano diz que o pedido só vira concluído quando o paciente foi avisado **e** o prontuário voltou ao arquivo. Este sistema nasceu ao contrário, de propósito: as duas trilhas são independentes, porque na prática a receita fica pronta enquanto a pasta ainda está voltando, e travar a conclusão por causa do arquivo faz a fila mostrar como pendente um atendimento que terminou. As duas leituras se defendem, então virou uma opção em Configurações — desligada por padrão, que é o comportamento atual.
+
+**Conteúdo clínico.** O plano tem uma regra de ouro: *o sistema não guarda informação clínica (diagnóstico, medicamento, queixa)*, e a descrição do pedido deve ser curta, como "nova receita" ou "faltou assinatura". **Este sistema guarda** — `avaliacoes.conteudo_clinico` existe, e há uma permissão inteira construída em volta de quem pode lê-lo (`avaliacao_conteudo`), além da auditoria de leitura.
+
+Isso não é um detalhe de implementação: muda o perfil de risco de LGPD do produto inteiro. Guardar dado de saúde exige base legal, prazo de retenção, encarregado e revisão jurídica; não guardar reduz drasticamente a responsabilidade. **É a primeira pergunta a levar ao gestor do projeto**, antes de qualquer decisão de arquitetura, porque a resposta muda o modelo de dados e o contrato com a nuvem.
 
 ---
 
