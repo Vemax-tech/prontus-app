@@ -23,7 +23,8 @@ Uma faixa no topo diz isso o tempo todo, de propósito, e o botão **Reiniciar d
 
 ```bash
 npm run dev      # servidor estático em http://localhost:3000
-npm run check    # verificação estática (sintaxe, imports, páginas, segurança, tokens de estilo)
+npm run check    # verificação estática (sintaxe, imports, páginas, segurança, tokens) + paleta
+npm run cores    # só a paleta: contraste, daltonismo, etiquetas e rampa, nos dois temas
 npm install      # só na primeira vez, para os testes (jsdom)
 npm test         # renderiza toda tela com todo papel e exercita os dois fluxos de ponta a ponta
 ```
@@ -50,12 +51,13 @@ js/      marca.js   nome do produto, num lugar só
          fluxo.js   máquina de estados dos dois fluxos — puro, testável
          permissoes.js  matriz papel × recurso × ação — puro, testável
          filas.js   quais filas cada papel tem, e como se repartem entre as duas telas
+         tema.js    escuro (padrão) ou claro — só troca um atributo em <html>
          dados.js   ÚNICO arquivo que a ida para produção substitui
          papel.js   quem está usando (na demonstração, um seletor)
          ui.js      casca da aplicação e peças visuais
          base/      peças sem domínio: DOM seguro, modal, tabela, validação
          modules/   uma tela por arquivo
-scripts/verificar.mjs    tests/telas.mjs
+scripts/verificar.mjs  scripts/cores.mjs  tests/telas.mjs
 ```
 
 **Sem build e sem dependência em produção.** O que é servido é o que está no repositório: HTML, CSS e módulos ES. `jsdom` existe só para o teste.
@@ -70,21 +72,38 @@ scripts/verificar.mjs    tests/telas.mjs
 
 ## Identidade visual
 
-Papel claro, clínico, denso. Quem usa isto passa o dia na tela: a informação é densa, a cor é escassa e sinaliza estado, e a leitura em sala clara e no papel impresso vem antes do efeito visual.
+Clínico e denso, em **dois temas**. Quem usa isto passa o dia na tela: a informação é densa, a cor é escassa e sinaliza estado, e a legibilidade vem antes do efeito visual.
 
-| | |
-|---|---|
-| Marca | petróleo `#0E4B57` · monograma: o dossiê e a trilha que a solicitação percorre |
-| Papel / superfície | `#F3F5F4` / `#FFFFFF` |
-| Tinta | `#101518` · `#49555B` · `#75838A` |
-| Estados | ok `#157F4F` · atenção `#B4820A` · crítico `#BC2342` |
-| Barras (magnitude) | rampa petróleo `#7EB6C4` → `#115A6B` |
-| Tipografia | Inter Tight (interface) · Instrument Serif (assinatura) · IBM Plex Mono (códigos e números) |
-| Geometria | raio 3 px em campos e botões, 6 px em painéis · fio de 1 px em vez de sombra · sem brilho, sem desfoque |
+**O escuro é o padrão** — a recepção e o arquivo ficam com a tela aberta o dia inteiro, em sala de luz baixa, e superfície escura cansa menos. O claro continua inteiro, a um clique na barra superior, porque sala de luz forte pede o contrário. A escolha fica em `localStorage`: é preferência da pessoa naquele computador, e o terminal abre do mesmo jeito no dia seguinte.
 
-**As cores não foram escolhidas no olho.** As três de estado passam juntas nas checagens de separação (ΔE ≥ 15 na visão normal, ≥ 8 nas simulações de daltonismo, contraste ≥ 3:1 sobre branco) e a rampa das barras é de um só matiz, com luminosidade monotônica e degraus visíveis. Toda cor de estado aparece **com rótulo**: a cor nunca carrega sozinha o significado.
+**O papel impresso é sempre claro.** A Recepção imprime a ficha e leva ao médico junto do prontuário; `@media print` redefine os tokens de cor para os valores do tema claro, qualquer que seja o tema da tela.
 
-Tudo isso vive em `css/tokens.css`. `npm run check` recusa qualquer `var(--token)` que não esteja definido lá — é o que impede uma tela de inventar cor.
+| | escuro (padrão) | claro |
+|---|---|---|
+| Papel / superfície | `#0D1417` / `#151E22` | `#F3F5F4` / `#FFFFFF` |
+| Tinta | `#EAF0F1` · `#B3C2C7` · `#85959B` | `#101518` · `#49555B` · `#6B7A81` |
+| Marca (petróleo) | `#52B4CD` | `#0E4B57` |
+| Estados | ok `#1E9A4B` · atenção `#E3A92F` · crítico `#FE6A7B` | ok `#157F4F` · atenção `#B4820A` · crítico `#BC2342` |
+| Barras (magnitude) | rampa petróleo `#2A6274` → `#7CC4D8` | `#7EB6C4` → `#115A6B` |
+
+Tipografia e geometria **não mudam** com o tema: Inter Tight (interface), Instrument Serif (assinatura), IBM Plex Mono (códigos e números); raio 3 px em campos e botões, 6 px em painéis; fio de 1 px em vez de sombra; sem brilho, sem desfoque. O monograma é o dossiê e a trilha que a solicitação percorre.
+
+Cada estado tem quatro papéis, e eles não são a mesma cor de propósito: `--ok` é o **sinal** (ponto, barra, número), `--ok-ink` é a **tinta** sobre o fundo da etiqueta, `--ok-wash` o fundo e `--ok-line` a borda. Separar sinal de tinta é o que evita ter de escurecer o sinal só para o texto da etiqueta caber no contraste — foi exatamente isso que fazia o âmbar encostar no crítico na simulação de deuteranopia.
+
+### As cores não foram escolhidas no olho
+
+`npm run cores` valida a paleta **nos dois temas** e falha se algum critério cair:
+
+- **texto**: `--ink` ≥ 7:1, `--ink-2` ≥ 4,5:1, `--ink-3` ≥ 3:1 sobre papel e sobre superfície;
+- **estados**: contraste ≥ 3:1 sobre a superfície, ΔE2000 ≥ 15 entre os três na visão normal e ≥ 8 nas simulações de **protanopia, deuteranopia e tritanopia** (Viénot–Brettel–Mollon) — nenhum par se confunde, nem para quem não distingue vermelho de verde;
+- **etiquetas**: a tinta tem ≥ 4,5:1 sobre o próprio fundo e mantém o matiz do sinal (≤ 20°), para a etiqueta não trocar de significado;
+- **rampa**: um só matiz (variação ≤ 12°), luminosidade monotônica, degraus perceptíveis e ponta visível sobre a superfície.
+
+O script lê `css/tokens.css` diretamente — **não existe uma segunda cópia da paleta** para ficar desencontrada da que o navegador usa. Ele roda dentro de `npm run check`, então um hex novo que quebre um critério derruba a verificação.
+
+Toda cor de estado aparece **com rótulo**: a cor nunca carrega sozinha o significado. A validação acima é a segunda linha de defesa, não a primeira.
+
+Tudo vive em `css/tokens.css`, e a verificação recusa qualquer token usado numa tela que não esteja definido lá — é o que impede uma tela de inventar cor.
 
 ### Decisões de layout, para não se perderem
 

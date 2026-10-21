@@ -2,52 +2,89 @@
    PRONTUS — identidade visual. Este arquivo é a única fonte de cor, tipo e forma.
    Nada aqui veio de outro produto: paleta, tipografia e geometria são deste sistema.
 
-   Direção: papel claro, clínico, denso. Quem usa isto passa o dia na tela — então
-   a informação é densa, a cor é escassa e sinaliza estado (nunca decora), e a
-   leitura em sala clara e no papel impresso vem antes do efeito visual.
+   Direção: clínico e denso. Quem usa isto passa o dia na tela — então a informação
+   é densa, a cor é escassa e sinaliza estado (nunca decora), e a legibilidade vem
+   antes do efeito visual.
 
-   As cores de estado e a rampa das barras foram validadas por script:
-     - estados (ok/atenção/crítico): ΔE normal ≥ 15, ΔE com daltonismo ≥ 8,
-       contraste ≥ 3:1 sobre branco — nenhum par se confunde;
-     - rampa petróleo: um só matiz, luminosidade monotônica, degraus ≥ 0,06,
-       ponta clara ≥ 2:1 sobre branco.
-   Mexer num hex pede rodar a validação de novo (ver README, "Identidade").
+   DOIS TEMAS, UM CONJUNTO DE NOMES.
+   O tema escuro é o padrão: a recepção e o arquivo ficam com a tela aberta o dia
+   inteiro, e superfície escura cansa menos em sala de luz baixa. O claro continua
+   inteiro, a um clique, porque sala de luz forte e tela brilhante pedem o contrário
+   — e porque o PAPEL IMPRESSO É SEMPRE CLARO: a ficha que a Recepção leva ao médico
+   não pode sair preta (ver @media print em css/app.css).
+
+   Nenhuma tela conhece um hex: toda cor passa por um token daqui, e `npm run check` recusa
+   token que não esteja definido aqui. Trocar de tema é trocar os valores abaixo,
+   e mais nada no sistema precisa saber.
+
+   As cores de estado e a rampa das barras são VALIDADAS POR SCRIPT, nos dois temas:
+     - estados (ok/atenção/crítico): ΔE2000 entre pares ≥ 15 na visão normal e ≥ 8
+       nas simulações de protanopia, deuteranopia e tritanopia; contraste ≥ 3:1
+       sobre a superfície do tema — nenhum par se confunde, nem para quem não
+       distingue vermelho de verde;
+     - rampa petróleo: um só matiz, luminosidade monotônica, degraus ≥ 0,06 e ponta
+       visível ≥ 1,6:1 sobre a superfície;
+     - texto: --ink ≥ 7:1, --ink-2 ≥ 4,5:1 e --ink-3 ≥ 3:1 sobre papel e superfície.
+   Mexer num hex pede rodar `npm run cores` de novo. O script lê ESTE arquivo: não
+   existe uma segunda cópia da paleta para ficar desencontrada.
    ============================================================================ */
+
+/* ---------------------------------------------------------------------------
+   TEMA ESCURO — o padrão.
+   Superfície fria, puxada para o petróleo da marca, e nunca preto puro: preto com
+   texto claro aumenta o halo e cansa mais do que um cinza-azulado profundo.
+   --------------------------------------------------------------------------- */
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
   /* ---------- superfícies ---------- */
-  --paper: #F3F5F4;      /* plano da página */
-  --surface: #FFFFFF;    /* painéis, tabelas, campos */
-  --surface-2: #FAFBFA;  /* cabeçalho de tabela, faixas, estados hover sutis */
-  --surface-3: #EAEFEE;  /* hover de item clicável */
+  --paper: #0D1417;      /* plano da página */
+  --surface: #151E22;    /* painéis, tabelas, campos */
+  --surface-2: #1A262B;  /* cabeçalho de tabela, faixas, estados hover sutis */
+  --surface-3: #233238;  /* hover de item clicável */
 
   /* ---------- tinta ---------- */
-  --ink: #101518;        /* títulos e números */
-  --ink-2: #49555B;      /* texto corrido */
-  --ink-3: #75838A;      /* rótulos, critérios, metadado */
+  --ink: #EAF0F1;        /* títulos e números */
+  --ink-2: #B3C2C7;      /* texto corrido */
+  --ink-3: #85959B;      /* rótulos, critérios, metadado */
 
   /* ---------- linhas ---------- */
-  --line: #E2E7E6;       /* divisória padrão (hairline) */
-  --line-2: #CBD3D2;     /* borda de campo, botão, contorno forte */
+  --line: #243238;       /* divisória padrão (hairline) */
+  --line-2: #36484F;     /* borda de campo, botão, contorno forte */
 
-  /* ---------- marca: petróleo ---------- */
-  --brand: #0E4B57;
-  --brand-2: #115A6B;
-  --brand-3: #1D7488;
-  --wash: #EDF3F4;       /* fundo de seleção/ativo */
-  --wash-2: #D5E3E7;     /* trilha de barra, borda de etiqueta da marca */
+  /* ---------- marca: petróleo, clareado para viver sobre fundo escuro ---------- */
+  --brand: #52B4CD;
+  --brand-2: #74C7DC;
+  --brand-3: #96D8E8;
+  --on-brand: #06222A;   /* tinta sobre preenchimento da marca */
+  --wash: #15303A;       /* fundo de seleção/ativo */
+  --wash-2: #1E4654;     /* trilha de barra, borda de etiqueta da marca */
 
   /* ---------- rampa sequencial (magnitude: barras, mapas de calor) ---------- */
-  --seq-1: #7EB6C4;
-  --seq-2: #4A95A8;
-  --seq-3: #1D7488;
-  --seq-4: #115A6B;
+  --seq-1: #2A6274;
+  --seq-2: #3C8299;
+  --seq-3: #55A3BC;
+  --seq-4: #7CC4D8;
 
-  /* ---------- estados (sempre acompanhados de rótulo, nunca cor sozinha) ---------- */
-  --ok: #157F4F;    --ok-wash: #E9F3ED;    --ok-line: #B6D7C4;
-  --warn: #B4820A;  --warn-wash: #FBF4E0;  --warn-line: #E6D49B;
-  --crit: #BC2342;  --crit-wash: #FBEBEE;  --crit-line: #EAB8C3;
+  /* ---------- estados (sempre acompanhados de rótulo, nunca cor sozinha) ----------
+     Quatro papéis por estado, e eles não são a mesma cor por um motivo:
+       --X       cor de SINAL: ponto, barra, ícone, número. Validada contra a superfície e
+                 contra os outros dois estados, inclusive em daltonismo.
+       --X-ink   TINTA sobre o fundo da etiqueta. Só precisa ser legível ali e manter o matiz;
+                 separá-la do sinal evita ter de escurecer o sinal — que é o que fazia o âmbar
+                 encostar no crítico na simulação de deuteranopia.
+       --X-wash  fundo da etiqueta.   --X-line  borda da etiqueta.
+     No escuro o crítico é o mais luminoso dos três: é ele que tem de saltar. */
+  --ok:   #1E9A4B;  --ok-ink:   #5CCE96;  --ok-wash:   #11291F;  --ok-line:   #1F4A36;
+  --warn: #E3A92F;  --warn-ink: #EFC164;  --warn-wash: #2B2210;  --warn-line: #503E15;
+  --crit: #FE6A7B;  --crit-ink: #FF8C9C;  --crit-wash: #2E151C;  --crit-line: #5A2531;
+
+  /* ---------- faixa de demonstração ---------- */
+  --demo-ink: #E8C87A;
+  --demo-ink-2: #F5DEA6;
+
+  /* ---------- véu do modal ---------- */
+  --scrim: rgba(0, 0, 0, .66);
 
   /* ---------- tipografia ---------- */
   --font: 'Inter Tight', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -59,6 +96,49 @@
   --r-2: 6px;            /* painéis e tabelas */
   --h-top: 52px;         /* altura da barra superior */
   --h-head: 80px;        /* barra superior + faixa de demonstração: deslocamento do que é fixo */
+  --shadow: 0 1px 2px rgba(0, 0, 0, .34), 0 1px 1px rgba(0, 0, 0, .26);
+  --shadow-up: 0 12px 32px -8px rgba(0, 0, 0, .62), 0 2px 6px rgba(0, 0, 0, .40);
+}
+
+/* ---------------------------------------------------------------------------
+   TEMA CLARO — papel. Só as cores mudam; tipografia e geometria são as mesmas.
+   --------------------------------------------------------------------------- */
+:root[data-theme='claro'] {
+  color-scheme: light;
+
+  --paper: #F3F5F4;
+  --surface: #FFFFFF;
+  --surface-2: #FAFBFA;
+  --surface-3: #EAEFEE;
+
+  --ink: #101518;
+  --ink-2: #49555B;
+  --ink-3: #6B7A81;
+
+  --line: #E2E7E6;
+  --line-2: #CBD3D2;
+
+  --brand: #0E4B57;
+  --brand-2: #115A6B;
+  --brand-3: #1D7488;
+  --on-brand: #FFFFFF;
+  --wash: #EDF3F4;
+  --wash-2: #D5E3E7;
+
+  --seq-1: #7EB6C4;
+  --seq-2: #4A95A8;
+  --seq-3: #1D7488;
+  --seq-4: #115A6B;
+
+  --ok:   #157F4F;  --ok-ink:   #10653E;  --ok-wash:   #EDF7F1;  --ok-line:   #B6D7C4;
+  --warn: #B4820A;  --warn-ink: #7A5806;  --warn-wash: #FBF4E0;  --warn-line: #E6D49B;
+  --crit: #BC2342;  --crit-ink: #A81D3A;  --crit-wash: #FFEFF2;  --crit-line: #EAB8C3;
+
+  --demo-ink: #8A6407;
+  --demo-ink-2: #7A5806;
+
+  --scrim: rgba(16, 21, 24, .4);
+
   --shadow: 0 1px 2px rgba(16, 21, 24, .06), 0 1px 1px rgba(16, 21, 24, .04);
   --shadow-up: 0 12px 32px -8px rgba(16, 21, 24, .22), 0 2px 6px rgba(16, 21, 24, .08);
 }

@@ -16,6 +16,7 @@
 // =====================================================================================
 import * as F from './fluxo.js';
 import { pode, PAPEIS } from './permissoes.js';
+import { METAS_PADRAO } from './prazos.js';
 
 // Id sequencial, NÃO aleatório, e o contador vive dentro do db: cada tela é uma página própria,
 // com recarga completa, e o id impresso numa lista precisa continuar valendo na tela seguinte.
@@ -31,9 +32,14 @@ const negado = (o) => erro(o || 'Sem permissão para esta ação.', '42501');
 export const db = {
   seq: 0,
   empresa: { id: 'emp-1', nome: 'Clínica (demonstração)' },
+  // Configuração da clínica. Em produção é uma tabela; aqui mora no mesmo db para ser salva,
+  // restaurada e reiniciada junto com o resto da demonstração.
+  config: { metas: { ...METAS_PADRAO }, exigirArquivamentoParaConcluir: false },
   usuarios: [], pacientes: [], prontuarios: [], movimentos: [],
   solicitacoes: [], tarefas: [], eventos: [],
   avaliacoes: [], documentos: [], comunicacoes: [], entregas: [], auditoria: [],
+  // Avisos DENTRO do sistema — o que substitui o grupo do WhatsApp (ver js/avisos.js).
+  avisos: [],
 };
 
 // ---------------------------------------------------------------- equipe da demonstração
@@ -259,6 +265,8 @@ const ROTEIRO = [
 
 export function semear() {
   db.seq = 0;
+  db.config = { metas: { ...METAS_PADRAO }, exigirArquivamentoParaConcluir: false };
+  db.avisos = [];
   db.usuarios = EQUIPE.map((u) => ({ ...u, ativo: true }));
   db.pacientes = PACIENTES.map(([nome, nasc, tel], i) => ({
     id: 'pac-' + (i + 1), empresa_id: db.empresa.id, nome, nascimento: nasc, telefone: tel,
@@ -293,7 +301,7 @@ const CHAVE_DB = 'prontus_db';
 // Suba este número sempre que a FORMA dos dados mudar (campo novo, campo que sumiu). Uma aba
 // aberta desde antes da mudança tem o modelo velho guardado, e carregá-lo daria uma tela quebrada
 // por um motivo invisível — é mais barato descartar e semear de novo.
-const VERSAO_DB = 2;
+const VERSAO_DB = 3;
 
 function salvar() {
   try { sessionStorage.setItem(CHAVE_DB, JSON.stringify({ v: VERSAO_DB, db })); } catch { /* sem storage: vale só esta página */ }
@@ -312,7 +320,7 @@ function carregar() {
 if (!carregar()) { semear(); salvar(); }
 
 // ---------------------------------------------------------------- leitura
-const TABELAS = { solicitacoes: 'solicitacoes', pacientes: 'pacientes', prontuarios: 'prontuarios', movimentos: 'movimentos', tarefas: 'tarefas', eventos: 'eventos', avaliacoes: 'avaliacoes', documentos: 'documentos', comunicacoes: 'comunicacoes', entregas: 'entregas', usuarios: 'usuarios', auditoria: 'auditoria' };
+const TABELAS = { avisos: 'avisos', solicitacoes: 'solicitacoes', pacientes: 'pacientes', prontuarios: 'prontuarios', movimentos: 'movimentos', tarefas: 'tarefas', eventos: 'eventos', avaliacoes: 'avaliacoes', documentos: 'documentos', comunicacoes: 'comunicacoes', entregas: 'entregas', usuarios: 'usuarios', auditoria: 'auditoria' };
 
 /** Espelha `sb.from(tabela).select().match(filtro)`. */
 export async function listar(tabela, filtro = {}) {
@@ -389,6 +397,63 @@ export function possivelDuplicidade({ tipo, paciente_id }, janelaHoras = 24) {
     && F.aberta(s) && new Date(s.criado_em).getTime() >= limite).map((s) => ({ ...s }));
 }
 
+// ------------------------------------------------------------------------------- avisos
+//
+// O plano do projeto é explícito: os avisos passam a acontecer DENTRO do sistema, no lugar do
+// grupo do WhatsApp, "uma única fonte da verdade, sem mensagens perdidas". Então o aviso não é
+// algo que alguém escreve: ele NASCE do próprio fluxo. Quando o caso entra na etapa de outra
+// equipe, aquela equipe é avisada — sem ninguém precisar lembrar de avisar.
+//
+// Isto é diferente de `comunicacoes`, e as duas coisas continuam existindo por motivos opostos:
+//   · `comunicacoes` registra o que foi feito FORA do sistema (a ligação para o paciente, o
+//     recado no grupo). O sistema não envia nada ali — ele anota o que já aconteceu.
+//   · `avisos` é o próprio sistema avisando. Tem destinatário (o papel), tem não-lido, e some
+//     quando alguém lê.
+//
+// EM PRODUÇÃO o aviso ao PACIENTE sai por WhatsApp pela API oficial (fase B do plano oficial);
+// o aviso entre EQUIPES continua sendo este, que não depende de nenhum serviço externo.
+
+/** Cria um aviso para um papel. Sem destinatário não há aviso: avisar "todo mundo" é o grupo. */
+function avisar(sol, paraPapel, tipo, texto) {
+  if (!paraPapel) return;
+  db.avisos.push({
+    id: uid('avi'), solicitacao_id: sol.id, protocolo: sol.protocolo,
+    para_papel: paraPapel, tipo, texto, criado_em: agora(), lido_em: null, lido_por: null,
+  });
+}
+
+/** O caso mudou de mãos: a equipe da vez precisa saber, e quem acabou de agir não. */
+function avisarEquipeDaVez(sol, etapaAnterior, ator) {
+  if (!F.aberta(sol)) {
+    // Encerrar também é notícia para quem ainda tem pendência de prontuário.
+    const pront = prontuarioPor(sol.prontuario_id);
+    if (F.prontuarioPendente(pront)) {
+      avisar(sol, pront.local === 'arquivo' || pront.local === 'em_transito_para_arquivo' ? 'arquivo' : 'recepcao',
+        'prontuario_pendente', `Caso ${F.DESFECHOS[sol.desfecho] ? F.DESFECHOS[sol.desfecho].toLowerCase() : 'encerrado'}, mas o prontuário ainda não voltou ao arquivo.`);
+    }
+    return;
+  }
+  const antes = F.papeisDaEtapa({ ...sol, etapa: etapaAnterior });
+  for (const papel of F.papeisDaEtapa(sol)) {
+    if (antes.includes(papel) && usuarioPor(ator)?.papeis.includes(papel)) continue;  // continua com quem já estava
+    avisar(sol, papel, 'chegou_na_fila', F.proximaAcao(sol).texto);
+  }
+}
+
+/** Avisos ainda não lidos do papel. É o número do sininho. */
+export const avisosDoPapel = (papel, { somenteNaoLidos = false } = {}) => db.avisos
+  .filter((a) => a.para_papel === papel && (!somenteNaoLidos || !a.lido_em))
+  .sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em))
+  .map((a) => ({ ...a }));
+
+/** Marca avisos como lidos. Sem id, marca todos os do papel — o "limpar" do sininho. */
+export async function marcarAvisosLidos({ ids = null, papel, ator }) {
+  const alvo = db.avisos.filter((a) => (ids ? ids.includes(a.id) : a.para_papel === papel) && !a.lido_em);
+  alvo.forEach((a) => { a.lido_em = agora(); a.lido_por = ator; });
+  salvar();
+  return ok(alvo.length);
+}
+
 // ------------------------------------------------------------------ quem está com o caso AGORA
 //
 // Dois níveis, que o sistema não confunde:
@@ -462,6 +527,16 @@ export async function moverSolicitacao({ id, transicao, papeis, ator, motivo, no
   if (t.para === 'concluida' && t.desfecho === 'resolvida') {
     const { data: d } = await dossie(id);
     const faltas = F.pendenciasParaConcluir(sol, d);
+    // DIVERGÊNCIA CONHECIDA, agora decidida pela clínica em vez de pelo código.
+    // O plano do projeto diz: "O pedido só vira Concluído quando o paciente foi avisado E o
+    // prontuário está de volta ao arquivo." Este sistema foi desenhado ao contrário — as duas
+    // trilhas são independentes, porque na vida real a receita fica pronta enquanto a pasta
+    // ainda está voltando, e travar a conclusão por causa do arquivo faz a fila mentir.
+    // As duas leituras são defensáveis, então a regra virou configuração: ligada, o sistema
+    // segue o plano ao pé da letra; desligada (padrão), avisa e deixa concluir.
+    if (db.config.exigirArquivamentoParaConcluir && F.prontuarioPendente(d.prontuario)) {
+      faltas.push(`O prontuário ainda está em "${F.LOCAIS[d.prontuario.local]}" e a clínica exige o arquivamento antes de concluir.`);
+    }
     if (faltas.length) return erro('Não é possível concluir: ' + faltas[0]);
   }
   const de = sol.etapa;
@@ -481,6 +556,7 @@ export async function moverSolicitacao({ id, transicao, papeis, ator, motivo, no
     if (F.ETAPAS_FIM.includes(t.para) && t.desfecho !== 'nao_aprovada') { x.estado = 'concluida'; x.concluida_em = agora(); }
   });
   proximaTarefa(sol);
+  avisarEquipeDaVez(sol, de, ator);
   auditarEscrita('transicao', 'solicitacao', id, ator, `${de} → ${t.para}`);
   return ok({ ...sol });
 }
@@ -584,3 +660,23 @@ export async function concluirTarefa({ id, papeis = [], ator }) {
 
 /** Volta tudo ao estado inicial — útil para reapresentar sem resíduo da demonstração anterior. */
 export async function reiniciar() { semear(); salvar(); return ok(true); }
+
+/** Configuração da clínica. Em produção, uma tabela com RLS: só quem administra escreve. */
+export const configAtual = () => ({ ...db.config, metas: { ...db.config.metas } });
+
+export async function salvarConfig({ metas, exigirArquivamentoParaConcluir, papeis, ator }) {
+  if (!pode(papeis, 'configuracoes', 'editar')) return negado('Só a administração da clínica muda a configuração.');
+  if (metas) {
+    for (const [etapa, v] of Object.entries(metas)) {
+      if (!F.ETAPAS[etapa]) return erro(`Etapa desconhecida: ${etapa}`);
+      if (v !== null && (!Number.isFinite(v) || v <= 0 || v > 720)) return erro('A meta de cada etapa deve ficar entre 1 e 720 horas, ou ficar vazia.');
+    }
+    db.config.metas = { ...db.config.metas, ...metas };
+  }
+  if (typeof exigirArquivamentoParaConcluir === 'boolean') {
+    db.config.exigirArquivamentoParaConcluir = exigirArquivamentoParaConcluir;
+  }
+  db.auditoria.push({ id: uid('aud'), acao: 'configuracao', recurso: 'configuracoes', solicitacao_id: null, ator_id: ator, detalhe: 'metas de prazo e regra de conclusão', quando: agora() });
+  salvar();
+  return ok(configAtual());
+}

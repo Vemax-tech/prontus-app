@@ -32,7 +32,7 @@
 .navi.on { background: var(--wash); color: var(--brand); font-weight: 600; }
 .navi.on .i { color: var(--brand-3); }
 .navi .pill {
-  min-width: 17px; padding: 0 5px; border-radius: 9px; background: var(--brand); color: #fff;
+  min-width: 17px; padding: 0 5px; border-radius: 9px; background: var(--brand); color: var(--on-brand);
   font-size: .625rem; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums;
 }
 .navsep { width: 1px; height: 20px; background: var(--line); margin: 0 6px; flex: none; }
@@ -56,13 +56,13 @@
    a tela toda: uma linha, cor de atenção, sempre visível, nunca fechável. */
 .demo {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding: 5px 18px; font-size: .75rem; color: #8A6407;
+  padding: 5px 18px; font-size: .75rem; color: var(--demo-ink);
   background: var(--warn-wash); border-bottom: 1px solid var(--warn-line);
 }
 .demo .i { width: 14px; height: 14px; color: var(--warn); }
-.demo b { color: #7A5806; }
+.demo b { color: var(--demo-ink-2); }
 .demo .sep { color: var(--warn-line); }
-.demo .linkbtn { margin-left: auto; color: #8A6407; font-size: .75rem; }
+.demo .linkbtn { margin-left: auto; color: var(--demo-ink); font-size: .75rem; }
 
 /* ---------------------------------------------------------------- área de conteúdo */
 .wrap { max-width: 1440px; margin: 0 auto; padding: 20px 18px 64px; }
@@ -252,6 +252,24 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
 /* ---------------------------------------------------------------- impressão */
 /* Recepção imprime a ficha do caso e leva ao médico junto do prontuário. */
 @media print {
+  /* O PAPEL É SEMPRE CLARO. A Recepção imprime a ficha do caso e leva ao médico junto do
+     prontuário; se o tema escuro chegasse à impressora, sairia uma página preta — gasto de
+     toner e leitura pior. Por isso a impressão redefine os tokens de cor para os valores do
+     tema claro, independentemente do tema escolhido na tela. Só cor: tipografia, geometria e
+     o resto dos tokens continuam valendo. */
+  :root {
+    color-scheme: light;
+    --paper: #FFFFFF; --surface: #FFFFFF; --surface-2: #FFFFFF; --surface-3: #FFFFFF;
+    --ink: #000000; --ink-2: #1A1A1A; --ink-3: #333333;
+    --line: #999999; --line-2: #777777;
+    --brand: #0E4B57; --brand-2: #115A6B; --brand-3: #1D7488; --on-brand: #FFFFFF;
+    --wash: #EDF3F4; --wash-2: #D5E3E7;
+    --seq-1: #7EB6C4; --seq-2: #4A95A8; --seq-3: #1D7488; --seq-4: #115A6B;
+    --ok: #157F4F; --ok-ink: #10653E; --ok-wash: #EDF7F1; --ok-line: #B6D7C4;
+    --warn: #B4820A; --warn-ink: #7A5806; --warn-wash: #FBF4E0; --warn-line: #E6D49B;
+    --crit: #BC2342; --crit-ink: #A81D3A; --crit-wash: #FFEFF2; --crit-line: #EAB8C3;
+    --shadow: none; --shadow-up: none;
+  }
   body { background: #fff; color: #000; font-size: 11pt; }
   .topwrap, .burger, .toolbar, .toasts, .next .acts, .btn, .qrail { display: none; }
   .wrap { max-width: none; padding: 0; }

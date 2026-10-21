@@ -9,6 +9,7 @@ import { papelAtual, definirPapel, papeisAtuais, atorAtual, PAPEIS } from './pap
 import { pode, podeCompleto } from './permissoes.js';
 import { nomeDe, usuarioPor, reiniciar } from './dados.js';
 import { dadosDasFilas, contarFilas } from './filas.js';
+import { temaAtual, alternarTema, TEMAS } from './tema.js';
 import { MARCA, MONOGRAMA } from './marca.js';
 
 export { instalarDom, h, fmtDate, linkSeguro, toast, copyText, modal, confirmDlg, formModal, tabs, qs } from './base/dom.js';
@@ -34,6 +35,8 @@ const ICONS = {
   arrow: '<path d="M5 12h14M13 5l7 7-7 7"/>',
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   print: '<path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+  sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+  lua: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
 };
 export const icon = criarIcon(ICONS, 'marca');
 export const empty = (msg) => emptyBase(msg, icon('inbox'));
@@ -107,6 +110,26 @@ const faixaDemo = () => h('div', { class: 'demo', role: 'note' },
  * Quem está usando o sistema. NA DEMONSTRAÇÃO é um seletor, para mostrar as visões sem login.
  * EM PRODUÇÃO vira o nome de quem entrou, e o papel chega pela sessão autenticada (ver papel.js).
  */
+/**
+ * Troca de tema. É um botão só, não um menu: são dois temas, e o ícone mostra para onde o clique
+ * leva. A troca é imediata e não recarrega a página — nenhum estado se perde no caminho.
+ */
+function botaoTema() {
+  const pinta = (b) => {
+    const claro = temaAtual() === 'claro';
+    const vai = claro ? 'escuro' : 'claro';
+    b.replaceChildren(icon(claro ? 'lua' : 'sol'));
+    b.setAttribute('aria-label', `Mudar para o tema ${vai}`);
+    b.setAttribute('title', `Tema ${TEMAS[temaAtual()].toLowerCase()} — clique para o ${vai}`);
+  };
+  const b = h('button', {
+    class: 'btn icon tema', type: 'button',
+    onclick: (e) => { alternarTema(); pinta(e.currentTarget); },
+  });
+  pinta(b);
+  return b;
+}
+
 function quemSouEu() {
   const atual = papelAtual();
   const u = usuarioPor(atorAtual());
@@ -159,7 +182,7 @@ export async function start(key, title, render) {
   const view = h('main', { class: 'wrap', id: 'view' });
   app.replaceChildren(
     h('div', { class: 'topwrap' },
-      h('header', { class: 'top' }, burger, assinatura(), nav, h('div', { class: 'tools' }, quemSouEu())),
+      h('header', { class: 'top' }, burger, assinatura(), nav, h('div', { class: 'tools' }, botaoTema(), quemSouEu())),
       faixaDemo()),
     view);
   document.title = `${title} — ${MARCA.produto}`;
