@@ -1,0 +1,188 @@
+/* PRONTUS — primitivas: reset, tipografia, superfícies, botões, campos, tabelas, etiquetas,
+   janela modal e aviso. Tokens em tokens.css. A casca e as telas estão em app.css. */
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; min-height: 100vh;
+  font-family: var(--font); font-size: 14px; line-height: 1.5;
+  color: var(--ink-2); background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, p, ul, ol, dl, figure { margin: 0; padding: 0; }
+ul { list-style: none; }
+a { color: inherit; text-decoration: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--brand-3); outline-offset: 1px; border-radius: 2px; }
+.i { width: 1.15em; height: 1.15em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------------------------------------------------------------- tipografia */
+h1, h2, h3 { color: var(--ink); font-weight: 600; line-height: 1.25; letter-spacing: -.012em; }
+h1 { font-size: 1.3125rem; }
+h2 { font-size: .9375rem; }
+h3 { font-size: .875rem; }
+.muted { color: var(--ink-3); }
+.small { font-size: .8125rem; }
+.micro { font-size: .6875rem; }
+.eyebrow { font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); }
+/* Números e códigos: tabulares, para alinhar na coluna e não dançar ao atualizar. */
+.mono, .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+b, strong { font-weight: 600; color: var(--ink); }
+code { font-family: var(--font-mono); font-size: .9em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 2px; padding: 0 4px; }
+
+/* ---------------------------------------------------------------- superfícies */
+.card, .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2); }
+.card { padding: 16px; }
+.card + .card, .stack > * + * { margin-top: 14px; }
+.panel > .ph {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2);
+  border-radius: var(--r-2) var(--r-2) 0 0;
+}
+.panel > .pb { padding: 14px; }
+.grid { display: grid; gap: 14px; }
+.g2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.g3 { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.g4 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.row.between { justify-content: space-between; }
+.cols2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; align-items: start; }
+.empty {
+  text-align: center; padding: 34px 16px; color: var(--ink-3);
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2);
+}
+.empty .i { width: 26px; height: 26px; color: var(--line-2); margin-bottom: 6px; }
+
+/* ---------------------------------------------------------------- botões */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 30px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r);
+  background: var(--surface); color: var(--ink); font-size: .8125rem; font-weight: 500;
+  white-space: nowrap; transition: background .12s, border-color .12s;
+}
+.btn:hover { background: var(--surface-3); border-color: var(--ink-3); }
+.btn .i { width: 15px; height: 15px; }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+.btn.primary:hover { background: var(--brand-2); border-color: var(--brand-2); }
+.btn.danger { color: var(--crit); border-color: var(--crit-line); }
+.btn.danger:hover { background: var(--crit-wash); border-color: var(--crit); }
+.btn.ghost { border-color: transparent; background: none; color: var(--brand-2); padding: 0 6px; }
+.btn.ghost:hover { background: var(--wash); border-color: transparent; }
+.btn.sm { height: 26px; padding: 0 9px; font-size: .75rem; }
+.btn.on { background: var(--wash); border-color: var(--brand-3); color: var(--brand); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--brand-2); font-size: .8125rem; font-weight: 500; text-decoration: underline; text-underline-offset: 2px; }
+
+/* ---------------------------------------------------------------- campos */
+label { display: block; font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); margin: 14px 0 5px; }
+input, select, textarea {
+  width: 100%; height: 32px; padding: 0 9px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r);
+  transition: border-color .12s, box-shadow .12s;
+}
+textarea { height: auto; min-height: 84px; padding: 8px 9px; resize: vertical; line-height: 1.5; }
+select { padding-right: 4px; }
+input::placeholder, textarea::placeholder { color: var(--ink-3); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--brand-3); box-shadow: 0 0 0 3px var(--wash-2); }
+.err { margin-top: 10px; color: var(--crit); font-size: .8125rem; font-weight: 500; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.toolbar input, .toolbar select { width: auto; flex: 1 1 170px; max-width: 280px; }
+.toolbar input[type="search"] { flex: 2 1 230px; max-width: 340px; }
+
+/* ---------------------------------------------------------------- etiquetas de estado */
+/* Retângulo discreto com um ponto da cor do estado. O rótulo sempre acompanha: a cor
+   nunca carrega sozinha o significado — quem não distingue a cor lê o texto. */
+.tag {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  padding: 1px 7px; border: 1px solid var(--line-2); border-radius: var(--r);
+  background: var(--surface-2); color: var(--ink-2);
+  font-size: .6875rem; font-weight: 500; line-height: 1.6; white-space: nowrap;
+}
+.tag::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--line-2); flex: none; }
+.tag.ok { color: var(--ok); background: var(--ok-wash); border-color: var(--ok-line); }
+.tag.ok::before { background: var(--ok); }
+.tag.warn { color: var(--warn); background: var(--warn-wash); border-color: var(--warn-line); }
+.tag.warn::before { background: var(--warn); }
+.tag.crit { color: var(--crit); background: var(--crit-wash); border-color: var(--crit-line); }
+.tag.crit::before { background: var(--crit); }
+.tag.info { color: var(--brand-2); background: var(--wash); border-color: var(--wash-2); }
+.tag.info::before { background: var(--brand-3); }
+.tag.dim { color: var(--ink-3); background: transparent; border-color: var(--line); }
+.tag.plain::before { display: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* ---------------------------------------------------------------- tabelas */
+.tw { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2); overflow: auto; max-height: 76vh; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .8125rem; }
+th {
+  position: sticky; top: 0; z-index: 2; text-align: left; white-space: nowrap;
+  padding: 7px 12px; background: var(--surface-2); border-bottom: 1px solid var(--line);
+  font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3);
+}
+td { padding: 7px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--surface-2); }
+td a.t { color: var(--ink); font-weight: 600; }
+td a.t:hover { color: var(--brand-2); text-decoration: underline; text-underline-offset: 2px; }
+tr.late td:first-child { box-shadow: inset 2px 0 0 var(--crit); }
+.thbtn { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
+.thbtn:hover { color: var(--ink); }
+.pager { margin-top: 10px; font-size: .8125rem; }
+
+/* ---------------------------------------------------------------- listas e definições */
+.ul-list > li { padding: 9px 0; border-bottom: 1px solid var(--line); }
+.ul-list > li:last-child { border-bottom: 0; }
+.ul-list b { color: var(--ink); }
+.dl { display: grid; grid-template-columns: max-content 1fr; gap: 7px 16px; font-size: .8125rem; align-items: baseline; }
+.dl dt { color: var(--ink-3); font-size: .75rem; }
+.dl dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+
+/* ---------------------------------------------------------------- barras de magnitude */
+/* Uma série só: o comprimento carrega o valor, a cor é constante e a trilha é recessiva. */
+.bar { height: 6px; border-radius: 2px; background: var(--wash-2); overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: 2px; background: var(--seq-3); transition: width .4s ease; }
+.bar.ok > i { background: var(--ok); }
+.bar.warn > i { background: var(--warn); }
+/* linha "rótulo · barra · valor" */
+.rowbar { display: grid; grid-template-columns: 1fr minmax(60px, 120px) auto; gap: 10px; align-items: center; font-size: .8125rem; }
+.rowbar > b { font-variant-numeric: tabular-nums; text-align: right; min-width: 2.5em; }
+
+/* ---------------------------------------------------------------- abas */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 16px; flex-wrap: wrap; }
+.tabs a {
+  padding: 7px 12px; margin-bottom: -1px; font-size: .8125rem; font-weight: 500;
+  color: var(--ink-3); border-bottom: 2px solid transparent;
+}
+.tabs a:hover { color: var(--ink); }
+.tabs a.on { color: var(--brand); border-bottom-color: var(--brand); }
+
+/* ---------------------------------------------------------------- janela, aviso, espera */
+.ov { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; background: rgba(16, 21, 24, .4); }
+.modal {
+  width: min(540px, 100%); max-height: 92vh; overflow: auto; padding: 20px;
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-2); box-shadow: var(--shadow-up);
+}
+.modal.wide { width: min(840px, 100%); }
+.modal > h2 { padding-bottom: 12px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+.modal .row { margin-top: 18px; justify-content: flex-end; }
+.toasts { position: fixed; right: 14px; bottom: 14px; z-index: 99; display: grid; gap: 7px; max-width: 360px; }
+.toast {
+  padding: 10px 14px; font-size: .8125rem; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line-2); border-left: 3px solid var(--brand);
+  border-radius: var(--r); box-shadow: var(--shadow-up);
+}
+.toast.err { border-left-color: var(--crit); }
+.spin { width: 22px; height: 22px; margin: 36px auto; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--brand-3); animation: sp .7s linear infinite; }
+@keyframes sp { to { transform: rotate(360deg); } }
+
+/* ---------------------------------------------------------------- barras de rolagem */
+* { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--ink-3); background-clip: content-box; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before { animation-duration: .001s; transition-duration: .001s; }
+}

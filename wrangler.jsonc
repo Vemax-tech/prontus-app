@@ -1,0 +1,11 @@
+{
+  // Publicação do Prontus no Cloudflare Workers (apenas arquivos estáticos: não há servidor).
+  // Projeto próprio, separado de qualquer outro produto — o endereço, os cabeçalhos e o histórico
+  // de deploy são deste sistema.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "prontus",
+  "compatibility_date": "2026-10-21",
+  "observability": { "enabled": true },
+  "assets": { "directory": "." },
+  "previews": {}
+}

@@ -1,0 +1,253 @@
+/* PRONTUS — casca da aplicação e blocos de tela.
+   Decisões de layout, para não se perderem:
+   1. Navegação na BARRA SUPERIOR, não em menu lateral: a tela deste sistema é cheia de tabela,
+      e 256 px de lateral fixa custam uma coluna de dado em monitor de recepção.
+   2. Densidade antes de enfeite: linha de 1 px em vez de sombra, superfície chapada em vez de
+      gradiente, raio pequeno. Caixa arredondada com texto solto é desperdício de espaço.
+   3. Cor é sinal. Fora das etiquetas de estado e da marca, a tela é tinta sobre papel. */
+
+/* ---------------------------------------------------------------- barra superior */
+/* A faixa de demonstração entra dentro do bloco fixo: se ela rolasse para fora da tela,
+   deixaria de cumprir o papel de avisar que nada ali é real. */
+.topwrap { position: sticky; top: 0; z-index: 50; }
+.top {
+  display: flex; align-items: center; gap: 18px;
+  height: var(--h-top); padding: 0 18px;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+/* Assinatura da marca: serifa na palavra, monograma em petróleo. */
+.mark { display: flex; align-items: center; gap: 9px; flex: none; color: var(--brand); }
+.mark .i { width: 22px; height: 22px; stroke-width: 1.6; }
+.mark span { font-family: var(--font-mark); font-size: 1.375rem; line-height: 1; letter-spacing: .005em; color: var(--brand); }
+.mark em { font-style: normal; font-family: var(--font); font-size: .625rem; font-weight: 600; text-transform: uppercase; letter-spacing: .14em; color: var(--ink-3); align-self: flex-end; padding-bottom: 2px; }
+
+.nav { display: flex; align-items: center; gap: 1px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.nav::-webkit-scrollbar { display: none; }
+.navi {
+  display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px;
+  border-radius: var(--r); font-size: .8125rem; font-weight: 500; color: var(--ink-2); white-space: nowrap;
+}
+.navi .i { width: 15px; height: 15px; color: var(--ink-3); }
+.navi:hover { background: var(--surface-3); color: var(--ink); }
+.navi.on { background: var(--wash); color: var(--brand); font-weight: 600; }
+.navi.on .i { color: var(--brand-3); }
+.navi .pill {
+  min-width: 17px; padding: 0 5px; border-radius: 9px; background: var(--brand); color: #fff;
+  font-size: .625rem; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums;
+}
+.navsep { width: 1px; height: 20px; background: var(--line); margin: 0 6px; flex: none; }
+
+/* Quem sou eu agora: na demonstração é um seletor; em produção vira o nome de quem entrou. */
+.tools { display: flex; align-items: center; gap: 10px; margin-left: auto; flex: none; }
+.whoami { display: flex; align-items: center; gap: 8px; padding-left: 12px; border-left: 1px solid var(--line); }
+.whoami .t { display: grid; line-height: 1.25; text-align: right; }
+.whoami .t b { font-size: .8125rem; }
+.whoami .t span { font-size: .6875rem; color: var(--ink-3); }
+.whoami select { width: auto; height: 28px; font-size: .75rem; max-width: 190px; }
+.avatar {
+  width: 28px; height: 28px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; background: var(--wash); border: 1px solid var(--wash-2);
+  color: var(--brand); font-size: .6875rem; font-weight: 700;
+}
+.burger { display: none; }
+
+/* ---------------------------------------------------------------- faixa de demonstração */
+/* Tem de ser impossível confundir a demonstração com produção, e ao mesmo tempo não roubar
+   a tela toda: uma linha, cor de atenção, sempre visível, nunca fechável. */
+.demo {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 5px 18px; font-size: .75rem; color: #8A6407;
+  background: var(--warn-wash); border-bottom: 1px solid var(--warn-line);
+}
+.demo .i { width: 14px; height: 14px; color: var(--warn); }
+.demo b { color: #7A5806; }
+.demo .sep { color: var(--warn-line); }
+.demo .linkbtn { margin-left: auto; color: #8A6407; font-size: .75rem; }
+
+/* ---------------------------------------------------------------- área de conteúdo */
+.wrap { max-width: 1440px; margin: 0 auto; padding: 20px 18px 64px; }
+.head {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px;
+  padding-bottom: 14px; margin-bottom: 18px; border-bottom: 1px solid var(--line);
+}
+.head h1 { margin-top: 2px; }
+.head > div:first-child { min-width: 0; }
+.head p { font-size: .8125rem; margin-top: 4px; max-width: 76ch; }
+.sec { margin-top: 24px; }
+.sec > h2 { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.sec > h2 .micro { color: var(--ink-3); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* ---------------------------------------------------------------- nota / aviso em texto */
+.note {
+  padding: 9px 12px; font-size: .8125rem; color: var(--ink-2);
+  background: var(--surface-2); border: 1px solid var(--line); border-left: 3px solid var(--line-2);
+  border-radius: var(--r);
+}
+.note.warn { background: var(--warn-wash); border-color: var(--warn-line); border-left-color: var(--warn); color: #7A5806; }
+.note.info { background: var(--wash); border-color: var(--wash-2); border-left-color: var(--brand-3); }
+.note .i { width: 14px; height: 14px; vertical-align: -2px; }
+
+/* ---------------------------------------------------------------- linha de indicadores */
+/* Um painel só, dividido por fios de 1 px — não oito cartões flutuando com ar entre eles.
+   O critério de contagem vai embaixo do número: indicador sem critério é opinião. */
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-2); overflow: hidden;
+}
+.stat {
+  display: block; padding: 11px 13px; background: var(--surface); color: inherit;
+  text-align: left; border: 0; font: inherit; transition: background .12s;
+}
+a.stat:hover, button.stat:hover { background: var(--surface-2); }
+.stat .k { display: block; font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); }
+.stat b {
+  display: block; margin: 3px 0 2px; font-size: 1.5rem; font-weight: 500; line-height: 1.05;
+  color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+}
+.stat .c { display: block; font-size: .6875rem; color: var(--ink-3); line-height: 1.35; }
+.stat.warn { box-shadow: inset 2px 0 0 var(--warn); }
+.stat.warn b { color: var(--warn); }
+.stat.crit { box-shadow: inset 2px 0 0 var(--crit); }
+.stat.crit b { color: var(--crit); }
+.stat.ok b { color: var(--ok); }
+.stat.on { background: var(--wash); box-shadow: inset 2px 0 0 var(--brand); }
+
+/* ---------------------------------------------------------------- próxima ação */
+/* A pergunta que a tela de detalhe tem de responder em um segundo: o que falta, e de quem é. */
+.next {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center;
+  padding: 13px 16px; background: var(--surface);
+  border: 1px solid var(--line); border-left: 3px solid var(--brand); border-radius: var(--r-2);
+}
+.next .k { font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--brand-3); }
+.next h2 { margin: 2px 0 3px; font-size: 1rem; }
+.next .who { font-size: .8125rem; }
+.next .who b { color: var(--brand); }
+.next .who .eu { color: var(--ok); font-weight: 600; }
+.next .acts { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.next.done { border-left-color: var(--ok); }
+.next.done .k { color: var(--ok); }
+@media (max-width: 760px) { .next { grid-template-columns: 1fr; } .next .acts { justify-content: flex-start; } }
+
+/* ---------------------------------------------------------------- trilha de etapas */
+/* Pontos ligados por um fio, com o passo atual nomeado. Pílula por etapa ocupava três linhas
+   e não dizia onde o caso está; o fio diz. O trecho de fio de cada etapa é o que vai DELA para a
+   seguinte: só as etapas já percorridas pintam o seu trecho, então o fio para no ponto atual. */
+.rail { display: flex; align-items: flex-start; overflow-x: auto; padding: 4px 0 2px; margin-bottom: 4px; }
+.rail .st { position: relative; flex: 1 1 0; min-width: 78px; padding: 15px 10px 0 0; }
+.rail .st::before { content: ""; position: absolute; top: 4px; left: 0; width: 100%; height: 1px; background: var(--line-2); }
+.rail .st:last-child::before { width: 9px; }
+.rail .st::after {
+  content: ""; position: absolute; top: 0; left: 0; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--surface); border: 1.5px solid var(--line-2); box-sizing: border-box;
+}
+.rail .st.feita::before { background: var(--brand-3); }
+.rail .st.feita::after { background: var(--brand-3); border-color: var(--brand-3); }
+.rail .st.atual::after { background: var(--brand); border-color: var(--brand); box-shadow: 0 0 0 3px var(--wash-2); }
+.rail .st span { display: block; font-size: .6875rem; line-height: 1.3; color: var(--ink-3); }
+.rail .st.atual span { color: var(--ink); font-weight: 600; }
+.railinfo { font-size: .6875rem; color: var(--ink-3); margin-bottom: 16px; }
+
+/* ---------------------------------------------------------------- linha do tempo */
+.tl { position: relative; padding-left: 17px; }
+.tl::before { content: ""; position: absolute; left: 3px; top: 6px; bottom: 6px; width: 1px; background: var(--line); }
+.tl li { position: relative; padding: 0 0 13px; font-size: .8125rem; }
+.tl li:last-child { padding-bottom: 0; }
+.tl li::before {
+  content: ""; position: absolute; left: -17px; top: 5px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--surface); border: 1.5px solid var(--line-2); box-sizing: border-box;
+}
+.tl li.marco::before { background: var(--brand); border-color: var(--brand); }
+.tl .when { font-family: var(--font-mono); font-size: .6875rem; color: var(--ink-3); white-space: nowrap; }
+
+/* ---------------------------------------------------------------- lista + detalhe (filas) */
+/* Escolher a fila à esquerda e ver os itens em largura inteira à direita. Antes eram N cartões
+   lado a lado, cada um com oito linhas cortadas em "e mais 12…". */
+.split { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 20px; align-items: start; }
+.qrail { position: sticky; top: calc(var(--h-head) + 14px); display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-2); overflow: hidden; }
+.q {
+  display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
+  width: 100%; padding: 9px 11px; background: var(--surface); border: 0; font: inherit; text-align: left;
+}
+.q:hover { background: var(--surface-2); }
+.q.on { background: var(--wash); box-shadow: inset 2px 0 0 var(--brand); }
+.q > span:first-child { min-width: 0; }
+.q .t { display: block; font-size: .8125rem; font-weight: 500; color: var(--ink); line-height: 1.3; }
+.q .d { display: block; font-size: .6875rem; color: var(--ink-3); line-height: 1.3; margin-top: 1px; }
+.q .n { font-size: .8125rem; font-weight: 600; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.q.on .n { color: var(--brand); }
+.q.vazia .t { color: var(--ink-3); font-weight: 400; }
+@media (max-width: 900px) { .split { grid-template-columns: 1fr; } .qrail { position: static; } }
+
+/* Item de fila / de lista: três colunas (identificação, o que falta, estado). */
+.item { display: grid; grid-template-columns: minmax(130px, 200px) minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.item:last-child { border-bottom: 0; }
+.item .id { font-family: var(--font-mono); font-size: .8125rem; font-weight: 500; color: var(--ink); }
+.item .id:hover { color: var(--brand-2); text-decoration: underline; text-underline-offset: 2px; }
+.item .sub { font-size: .6875rem; color: var(--ink-3); margin-top: 1px; }
+.item .o { font-size: .8125rem; }
+.item .st { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.item .age { font-size: .6875rem; color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 48px; text-align: right; }
+.item .age.tarde { color: var(--crit); font-weight: 600; }
+@media (max-width: 720px) { .item { grid-template-columns: 1fr; gap: 4px; } .item .st { justify-content: flex-start; } }
+
+/* ---------------------------------------------------------------- detalhe em duas colunas */
+.det { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; margin-top: 18px; }
+.det > .aside { display: grid; gap: 14px; position: sticky; top: calc(var(--h-head) + 14px); }
+.det > .main { display: grid; gap: 14px; min-width: 0; }
+@media (max-width: 1040px) { .det { grid-template-columns: 1fr; } .det > .aside { position: static; } }
+
+/* ---------------------------------------------------------------- matriz de permissões */
+.matriz table { font-size: .75rem; }
+.matriz td, .matriz th { text-align: center; white-space: nowrap; padding: 6px 8px; }
+.matriz td:first-child, .matriz th:first-child {
+  position: sticky; left: 0; z-index: 1; text-align: left; white-space: normal; min-width: 230px;
+  background: var(--surface); border-right: 1px solid var(--line);
+}
+.matriz th:first-child { z-index: 3; background: var(--surface-2); }
+.matriz tbody tr:hover td:first-child { background: var(--surface-2); }
+.matriz .n { font-family: var(--font-mono); font-weight: 600; }
+.matriz .n-E { color: var(--ok); }
+.matriz .n-V { color: var(--ink); }
+.matriz .n-Vm { color: var(--ink-3); font-weight: 400; }
+.matriz .n-no { color: var(--line-2); }
+.matriz th.meu { color: var(--brand); background: var(--wash); }
+.legenda { display: flex; flex-wrap: wrap; gap: 14px; font-size: .75rem; color: var(--ink-3); }
+.legenda .n { margin-right: 3px; }
+
+/* ---------------------------------------------------------------- menu em tela estreita */
+@media (max-width: 1100px) {
+  .top { gap: 12px; }
+  .burger { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; background: none; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--ink); }
+  .nav {
+    position: fixed; inset: var(--h-head) auto 0 0; z-index: 60; width: 248px;
+    display: grid; grid-auto-rows: max-content; gap: 2px; padding: 12px;
+    background: var(--surface); border-right: 1px solid var(--line); box-shadow: var(--shadow-up);
+    transform: translateX(-102%); transition: transform .22s ease; overflow-y: auto;
+  }
+  .nav.open { transform: none; }
+  .navi { height: 34px; }
+  .navsep { width: auto; height: 1px; margin: 6px 0; }
+  .whoami .t { display: none; }
+}
+@media (max-width: 560px) {
+  .wrap { padding: 16px 14px 56px; }
+  .top { padding: 0 14px; }
+  .demo { padding: 5px 14px; }
+  .mark em { display: none; }
+  .whoami select { max-width: 130px; }
+}
+
+/* ---------------------------------------------------------------- impressão */
+/* Recepção imprime a ficha do caso e leva ao médico junto do prontuário. */
+@media print {
+  body { background: #fff; color: #000; font-size: 11pt; }
+  .topwrap, .burger, .toolbar, .toasts, .next .acts, .btn, .qrail { display: none; }
+  .wrap { max-width: none; padding: 0; }
+  .det, .split { grid-template-columns: 1fr; }
+  .det > .aside, .qrail { position: static; }
+  .card, .panel, .tw, .stats { border-color: #999; box-shadow: none; break-inside: avoid; }
+  .tw { max-height: none; overflow: visible; }
+  h1, h2, h3, b, .stat b, td a.t { color: #000; }
+  .eyebrow, th, .k { color: #333; }
+}

@@ -1,0 +1,64 @@
+/* ============================================================================
+   PRONTUS — identidade visual. Este arquivo é a única fonte de cor, tipo e forma.
+   Nada aqui veio de outro produto: paleta, tipografia e geometria são deste sistema.
+
+   Direção: papel claro, clínico, denso. Quem usa isto passa o dia na tela — então
+   a informação é densa, a cor é escassa e sinaliza estado (nunca decora), e a
+   leitura em sala clara e no papel impresso vem antes do efeito visual.
+
+   As cores de estado e a rampa das barras foram validadas por script:
+     - estados (ok/atenção/crítico): ΔE normal ≥ 15, ΔE com daltonismo ≥ 8,
+       contraste ≥ 3:1 sobre branco — nenhum par se confunde;
+     - rampa petróleo: um só matiz, luminosidade monotônica, degraus ≥ 0,06,
+       ponta clara ≥ 2:1 sobre branco.
+   Mexer num hex pede rodar a validação de novo (ver README, "Identidade").
+   ============================================================================ */
+:root {
+  color-scheme: light;
+
+  /* ---------- superfícies ---------- */
+  --paper: #F3F5F4;      /* plano da página */
+  --surface: #FFFFFF;    /* painéis, tabelas, campos */
+  --surface-2: #FAFBFA;  /* cabeçalho de tabela, faixas, estados hover sutis */
+  --surface-3: #EAEFEE;  /* hover de item clicável */
+
+  /* ---------- tinta ---------- */
+  --ink: #101518;        /* títulos e números */
+  --ink-2: #49555B;      /* texto corrido */
+  --ink-3: #75838A;      /* rótulos, critérios, metadado */
+
+  /* ---------- linhas ---------- */
+  --line: #E2E7E6;       /* divisória padrão (hairline) */
+  --line-2: #CBD3D2;     /* borda de campo, botão, contorno forte */
+
+  /* ---------- marca: petróleo ---------- */
+  --brand: #0E4B57;
+  --brand-2: #115A6B;
+  --brand-3: #1D7488;
+  --wash: #EDF3F4;       /* fundo de seleção/ativo */
+  --wash-2: #D5E3E7;     /* trilha de barra, borda de etiqueta da marca */
+
+  /* ---------- rampa sequencial (magnitude: barras, mapas de calor) ---------- */
+  --seq-1: #7EB6C4;
+  --seq-2: #4A95A8;
+  --seq-3: #1D7488;
+  --seq-4: #115A6B;
+
+  /* ---------- estados (sempre acompanhados de rótulo, nunca cor sozinha) ---------- */
+  --ok: #157F4F;    --ok-wash: #E9F3ED;    --ok-line: #B6D7C4;
+  --warn: #B4820A;  --warn-wash: #FBF4E0;  --warn-line: #E6D49B;
+  --crit: #BC2342;  --crit-wash: #FBEBEE;  --crit-line: #EAB8C3;
+
+  /* ---------- tipografia ---------- */
+  --font: 'Inter Tight', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mark: 'Instrument Serif', Georgia, 'Times New Roman', serif;  /* só a assinatura da marca */
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+
+  /* ---------- geometria e ritmo ---------- */
+  --r: 3px;              /* campos, botões, etiquetas */
+  --r-2: 6px;            /* painéis e tabelas */
+  --h-top: 52px;         /* altura da barra superior */
+  --h-head: 80px;        /* barra superior + faixa de demonstração: deslocamento do que é fixo */
+  --shadow: 0 1px 2px rgba(16, 21, 24, .06), 0 1px 1px rgba(16, 21, 24, .04);
+  --shadow-up: 0 12px 32px -8px rgba(16, 21, 24, .22), 0 2px 6px rgba(16, 21, 24, .08);
+}

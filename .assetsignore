@@ -1,0 +1,13 @@
+# Arquivos do repositório que NÃO fazem parte do site publicado (a raiz inteira é enviada).
+node_modules
+.git
+.github
+.wrangler
+tests
+docs
+package.json
+package-lock.json
+wrangler.jsonc
+serve.json
+.assetsignore
+*.md
