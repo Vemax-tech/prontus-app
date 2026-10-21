@@ -44,11 +44,12 @@ O roteiro de apresentação está em [`docs/roteiro-apresentacao.md`](docs/rotei
 ## Como está organizado
 
 ```
-index.html  filas/  solicitacoes/  prontuarios/  registros/  relatorios/  permissoes/
+index.html  filas/  minhafila/  solicitacoes/  prontuarios/  registros/  relatorios/  permissoes/
 css/     tokens.css (identidade)  base.css (primitivas)  app.css (casca e telas)
 js/      marca.js   nome do produto, num lugar só
          fluxo.js   máquina de estados dos dois fluxos — puro, testável
          permissoes.js  matriz papel × recurso × ação — puro, testável
+         filas.js   quais filas cada papel tem, e como se repartem entre as duas telas
          dados.js   ÚNICO arquivo que a ida para produção substitui
          papel.js   quem está usando (na demonstração, um seletor)
          ui.js      casca da aplicação e peças visuais
@@ -92,6 +93,25 @@ Tudo isso vive em `css/tokens.css`. `npm run check` recusa qualquer `var(--token
 3. **A fila escolhe-se à esquerda e lê-se à direita.** O formato de uma caixa por fila cortava cada lista em "e mais 12…".
 4. **No detalhe, a próxima ação e os botões dela no mesmo bloco.** Ler o que falta e fazer o que falta no mesmo lugar.
 5. **Cor é sinal.** Fora das etiquetas de estado e da marca, é tinta sobre papel.
+6. **Fila atual e Minha fila são duas telas, não duas abas.** Pegar trabalho e tocar o que já é seu são dois momentos diferentes do dia; o número de cada uma fica no menu, e cada número conta exatamente o que a sua tela mostra.
+
+---
+
+## Quem está com o caso agora
+
+A etapa diz de qual **equipe** é a vez. Isso não bastava: "o Call Center tem 16 itens" não diz quem vai fazer o quê, e dois atendentes podiam pegar o mesmo caso sem saber.
+
+Por isso a solicitação tem dono explícito:
+
+- **Fila atual** — o que é da vez da sua equipe e **ninguém assumiu**. É de onde se pega trabalho, com o botão **Assumir**.
+- **Minha fila** — o que **você** assumiu. É a sua lista de responsabilidade, e dela sai o número no menu.
+- **Liberar** devolve o caso à fila da equipe, e fica registrado que você o teve.
+
+A posse vale **por etapa**: quando o caso passa para outra equipe ela se desfaz sozinha, porque ninguém continua dono de um trecho que não é mais dele. Quem respondeu por cada trecho fica na linha do tempo — é esse o rastro do começo ao fim. Se a etapa seguinte ainda é da mesma equipe, o dono continua: não se pede para reassumir o que já se está fazendo.
+
+A **trilha do prontuário físico não entra nisso**. A custódia é controlada pelos registros de movimentação, com nome e hora em cada um; misturar os dois eixos é exatamente o que o resto do sistema evita.
+
+**Contagem.** As filas se cruzam de propósito — o mesmo caso está em "Respostas recebidas a conferir" e em "Pacientes a contatar", que são duas leituras do mesmo trabalho. Todo total passa por um conjunto de ids: conta casos, não linhas. Os números do menu e os das telas saem da **mesma função** (`js/filas.js`), e é por isso que não podem divergir.
 
 ---
 

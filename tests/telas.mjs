@@ -46,7 +46,7 @@ const abrirTela = async (arquivo, fn = 'init', query = '') => {
 
 // ================================================================ 1. telas por papel
 console.log('\n## Telas renderizam para cada papel');
-const TELAS = [['painel.js', 'init'], ['filas.js', 'init'], ['solicitacoes.js', 'init'], ['prontuarios.js', 'init'], ['registros.js', 'init'], ['relatorios.js', 'init'], ['permissoes.js', 'init']];
+const TELAS = [['painel.js', 'init'], ['filas.js', 'init'], ['minhafila.js', 'init'], ['solicitacoes.js', 'init'], ['prontuarios.js', 'init'], ['registros.js', 'init'], ['relatorios.js', 'init'], ['permissoes.js', 'init']];
 for (const papel of Object.keys(P.PAPEIS)) {
   trocarPapel(papel);
   for (const [arq, fn] of TELAS) {

@@ -79,14 +79,14 @@ export const TRANSICOES = [
   { id: 'T04', de: 'aguardando_prontuario', para: 'prontuario_em_transito', papeis: ['arquivo'], rotulo: 'Entregar à Recepção', viaProntuario: 'entregue' },
   { id: 'T05', de: 'prontuario_em_transito', para: 'prontuario_na_recepcao', papeis: ['recepcao'], rotulo: 'Confirmar recebimento', viaProntuario: 'recebido' },
   { id: 'T06', de: 'prontuario_na_recepcao', para: 'aguardando_medico', papeis: ['recepcao'], rotulo: 'Encaminhar ao médico', exigeConferencia: true },
-  { id: 'T07', de: 'aguardando_medico', para: 'retorno_disponivel', papeis: ['medico'], rotulo: 'Registrar retorno' },
-  { id: 'T08', de: 'aguardando_medico', para: 'aguardando_esclarecimento', papeis: ['medico'], rotulo: 'Pedir esclarecimento' },
+  { id: 'T07', de: 'aguardando_medico', para: 'retorno_disponivel', papeis: ['medico'], rotulo: 'Registrar retorno', soDoMedicoDoCaso: true },
+  { id: 'T08', de: 'aguardando_medico', para: 'aguardando_esclarecimento', papeis: ['medico'], rotulo: 'Pedir esclarecimento', soDoMedicoDoCaso: true },
   { id: 'T09', de: 'aguardando_esclarecimento', para: 'aguardando_medico', papeis: ['callcenter', 'recepcao'], rotulo: 'Prestar o esclarecimento' },
   { id: 'T10', de: 'retorno_disponivel', para: 'aguardando_contato_paciente', papeis: ['recepcao'], rotulo: 'Avisar no grupo' },
   { id: 'T11', de: 'aguardando_contato_paciente', para: 'concluida', papeis: ['callcenter'], tipos: ['duvida_correcao'], rotulo: 'Concluir: dúvida esclarecida', desfecho: 'resolvida' },
   { id: 'T12', de: 'aguardando_contato_paciente', para: 'aguardando_entrega', papeis: ['callcenter'], tipos: ['pedido_receita'], rotulo: 'Paciente avisado: definir entrega' },
   { id: 'T13', de: 'aguardando_entrega', para: 'concluida', papeis: ['callcenter', 'recepcao'], tipos: ['pedido_receita'], rotulo: 'Concluir: entrega registrada', desfecho: 'resolvida' },
-  { id: 'T14', de: 'aguardando_medico', para: 'concluida', papeis: ['medico'], tipos: ['pedido_receita'], rotulo: 'Não aprovar o pedido', desfecho: 'nao_aprovada' },
+  { id: 'T14', de: 'aguardando_medico', para: 'concluida', papeis: ['medico'], tipos: ['pedido_receita'], rotulo: 'Não aprovar o pedido', desfecho: 'nao_aprovada', soDoMedicoDoCaso: true },
   { id: 'T16', de: 'concluida', para: 'aberta', papeis: ['callcenter', 'admin_empresa'], rotulo: 'Reabrir', exigeMotivo: true },
 ];
 /** T15: cancelar, de qualquer etapa não terminal. */
@@ -107,11 +107,18 @@ export const MOV_VALIDOS = [
   { id: 'C10', mov: 'nao_localizado', de: ['arquivo'], para: 'nao_localizado', papeis: ['arquivo'], rotulo: 'Não encontrei o prontuário' },
 ];
 
-/** Transições do eixo 1 possíveis a partir do estado atual, já filtradas por papel e por tipo. */
-export function transicoesDe(sol, papeis) {
+/**
+ * Transições do eixo 1 possíveis a partir do estado atual, já filtradas por papel e por tipo.
+ *
+ * `ator` é opcional e só importa para RN-10: o caso encaminhado a um médico é daquele médico, e
+ * `soDoMedicoDoCaso` tira a transição da lista de qualquer outro. Sem `ator` a função continua
+ * respondendo só por papel — é assim que o teste puro a exercita.
+ */
+export function transicoesDe(sol, papeis, ator = null) {
   const lista = TRANSICOES.filter((t) => t.de === sol.etapa
     && (!t.tipos || t.tipos.includes(sol.tipo))
-    && t.papeis.some((p) => papeis.includes(p)));
+    && t.papeis.some((p) => papeis.includes(p))
+    && !(t.soDoMedicoDoCaso && ator && sol.medico_id && sol.medico_id !== ator));
   if (aberta(sol) && CANCELAR.papeis.some((p) => papeis.includes(p))) lista.push({ ...CANCELAR, de: sol.etapa });
   return lista;
 }
@@ -154,23 +161,36 @@ export function pendenciasParaConcluir(sol, ctx) {
 export const prontuarioPendente = (pront) => Boolean(pront) && pront.local !== 'arquivo';
 
 /**
+ * Rótulo de cada papel nas frases desta máquina de estados. Espelha PAPEIS de js/permissoes.js;
+ * fica aqui, repetido, para este arquivo continuar puro e sem import de permissão.
+ */
+const PAPEL_ROTULO = { callcenter: 'Call Center', arquivo: 'Arquivo', recepcao: 'Recepção', medico: 'Médico' };
+
+/**
  * A próxima ação necessária, em uma frase, e de quem é. É o que a tela de detalhe destaca (RF-42).
+ * `papeis` = chaves ('callcenter'…), `papel` = o mesmo em texto ('Call Center / Recepção').
  */
 export function proximaAcao(sol) {
   const m = {
-    aberta: ['Call Center', 'Registrar o pedido e avisar o arquivo para localizar o prontuário.'],
-    em_triagem: ['Call Center', 'Concluir a triagem e pedir o prontuário.'],
-    aguardando_prontuario: ['Arquivo', 'Localizar o prontuário, retirar e entregar à Recepção.'],
-    prontuario_em_transito: ['Recepção', 'Confirmar o recebimento do prontuário.'],
-    prontuario_na_recepcao: ['Recepção', 'Conferir e encaminhar o caso ao médico.'],
-    aguardando_medico: ['Médico', 'Analisar e registrar a decisão.'],
-    aguardando_esclarecimento: ['Call Center / Recepção', 'Prestar o esclarecimento pedido pelo médico.'],
-    retorno_disponivel: ['Recepção', 'Avisar no grupo que o retorno está disponível.'],
-    aguardando_contato_paciente: ['Call Center', sol.tipo === 'pedido_receita' ? 'Avisar o paciente que a receita está pronta.' : 'Comunicar a resposta do médico ao paciente.'],
-    aguardando_entrega: ['Call Center / Recepção', 'Registrar a entrega conforme o resultado real.'],
-    concluida: [null, 'Nada. Caso concluído.'],
-    cancelada: [null, 'Nada. Caso cancelado.'],
+    aberta: [['callcenter'], 'Registrar o pedido e avisar o arquivo para localizar o prontuário.'],
+    em_triagem: [['callcenter'], 'Concluir a triagem e pedir o prontuário.'],
+    aguardando_prontuario: [['arquivo'], 'Localizar o prontuário, retirar e entregar à Recepção.'],
+    prontuario_em_transito: [['recepcao'], 'Confirmar o recebimento do prontuário.'],
+    prontuario_na_recepcao: [['recepcao'], 'Conferir e encaminhar o caso ao médico.'],
+    aguardando_medico: [['medico'], 'Analisar e registrar a decisão.'],
+    aguardando_esclarecimento: [['callcenter', 'recepcao'], 'Prestar o esclarecimento pedido pelo médico.'],
+    retorno_disponivel: [['recepcao'], 'Avisar no grupo que o retorno está disponível.'],
+    aguardando_contato_paciente: [['callcenter'], sol.tipo === 'pedido_receita' ? 'Avisar o paciente que a receita está pronta.' : 'Comunicar a resposta do médico ao paciente.'],
+    aguardando_entrega: [['callcenter', 'recepcao'], 'Registrar a entrega conforme o resultado real.'],
+    concluida: [[], 'Nada. Caso concluído.'],
+    cancelada: [[], 'Nada. Caso cancelado.'],
   };
-  const [papel, texto] = m[sol.etapa] || [null, '—'];
-  return { papel, texto };
+  const [papeis, texto] = m[sol.etapa] || [[], '—'];
+  return { papeis, papel: papeis.length ? papeis.map((p) => PAPEL_ROTULO[p]).join(' / ') : null, texto };
 }
+
+/**
+ * De qual equipe é a vez, em chaves de papel. Vazio = nada a fazer (caso encerrado).
+ * É o que decide quem pode ASSUMIR o caso nesta etapa (a fila atual da equipe).
+ */
+export const papeisDaEtapa = (sol) => proximaAcao(sol).papeis;

@@ -7,7 +7,8 @@
 import { criarIcon, criarRun, empty as emptyBase, h, toast } from './base/dom.js';
 import { papelAtual, definirPapel, papeisAtuais, atorAtual, PAPEIS } from './papel.js';
 import { pode, podeCompleto } from './permissoes.js';
-import { nomeDe, usuarioPor, reiniciar, listar } from './dados.js';
+import { nomeDe, usuarioPor, reiniciar } from './dados.js';
+import { dadosDasFilas, contarFilas } from './filas.js';
 import { MARCA, MONOGRAMA } from './marca.js';
 
 export { instalarDom, h, fmtDate, linkSeguro, toast, copyText, modal, confirmDlg, formModal, tabs, qs } from './base/dom.js';
@@ -81,7 +82,8 @@ export const pageHead = (olho, titulo, sub, ...acoes) => h('div', { class: 'head
 // [pasta, rótulo, ícone, recurso exigido (null = todos), separador antes]
 const NAV = [
   ['', 'Visão geral', 'home', 'dashboard', false],
-  ['filas/', 'Minha fila', 'inbox', 'tarefa_ver', false],
+  ['filas/', 'Fila atual', 'inbox', 'tarefa_ver', false],
+  ['minhafila/', 'Minha fila', 'check', 'tarefa_ver', false],
   ['solicitacoes/', 'Solicitações', 'list', 'solicitacao_ver', false],
   ['prontuarios/', 'Prontuários', 'archive', 'prontuario_ver', false],
   ['registros/', 'Documentos', 'file', 'comunicacao_ver', false],
@@ -132,11 +134,13 @@ export async function start(key, title, render) {
     podeCompleto: (recurso) => podeCompleto(papeis, recurso),
   };
 
-  // Quantos itens esperam por este papel: o número vai na navegação, onde serve antes do clique.
-  let pendentes = 0;
+  // Os números do menu, pela MESMA função que as telas usam (js/filas.js). Antes havia um só,
+  // contando tarefas pendentes do papel, ao lado de uma tela que somava solicitações em filas que
+  // se sobrepõem: dois números diferentes sob o mesmo rótulo, e nenhum explicava o outro.
+  const contagem = { 'filas/': 0, 'minhafila/': 0 };
   try {
-    const { data } = await listar('tarefas');
-    pendentes = (data || []).filter((t) => t.estado === 'pendente' && t.papel_responsavel === papeis[0]).length;
+    const { atual, minha } = contarFilas(papeis[0], ator, await dadosDasFilas());
+    contagem['filas/'] = atual; contagem['minhafila/'] = minha;
   } catch { /* fila sem número é melhor que tela sem casca */ }
 
   const mod = NAV.find((n) => n[0] === key);
@@ -145,7 +149,7 @@ export async function start(key, title, render) {
     visiveis.map(([p, rot, ic, , sep]) => [
       sep && h('span', { class: 'navsep', 'aria-hidden': 'true' }),
       h('a', { class: 'navi' + (p === key ? ' on' : ''), href: ROOT + p, 'aria-current': p === key ? 'page' : null },
-        icon(ic), rot, p === 'filas/' && pendentes ? h('span', { class: 'pill' }, String(pendentes)) : null),
+        icon(ic), rot, contagem[p] ? h('span', { class: 'pill' }, String(contagem[p])) : null),
     ]));
   const burger = h('button', {
     class: 'burger', 'aria-label': 'Abrir navegação', 'aria-expanded': 'false', 'aria-controls': 'nav',

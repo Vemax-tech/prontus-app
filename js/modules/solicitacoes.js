@@ -16,7 +16,8 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
   ]);
   const lista = [...sols].sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em));
 
-  const f = { q: '', tipo: '', etapa: qs('etapa') || '', prio: '', papel: '', abertas: qs('etapa') ? '' : '1' };
+  // 'dono' = filtro de posse: vazio (todos), 'eu' ou 'livre'.
+  const f = { q: '', tipo: '', dono: '', etapa: qs('etapa') || '', prio: '', papel: '', abertas: qs('etapa') ? '' : '1' };
   const st = { sort: 'etapa_desde', dir: 1, page: 0 };
   const body = h('div');
 
@@ -70,16 +71,20 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
       const p = F.proximaAcao(s);
       return p.papel ? badge(p.papel, 'dim') : h('span', { class: 'small muted' }, '—');
     } },
+    // No lugar de um botão "Abrir" — a linha inteira já abre o caso, e a coluna extra empurrava
+    // a tabela para fora da tela em monitor de 1280. Aqui vai o que faltava: o nome de quem está
+    // com o caso agora, que é a pergunta que a lista recebe o dia todo.
+    { key: 'dono', label: 'Com quem está', sort: (s) => (s.assumido_por ? nomeDe(s.assumido_por).toLowerCase() : 'zz'), render: (s) => {
+      if (!F.aberta(s)) return h('span', { class: 'small muted' }, '—');
+      if (!s.assumido_por) return badge('sem dono', 'warn');
+      return h('span', { class: 'small' }, nomeDe(s.assumido_por), s.assumido_por === ctx.ator ? h('div', { class: 'micro' , style: 'color:var(--ok)' }, 'é você') : null);
+    } },
     { key: 'pend', label: 'Pendências', sort: (s) => -tarefasDe(s).length, render: (s) => {
       const n = tarefasDe(s).length, pr = prontDe(s);
       return h('span', { class: 'chips' },
         n ? badge(`${n} tarefa${n > 1 ? 's' : ''}`, 'warn') : null,
         F.prontuarioPendente(pr) ? badge('prontuário fora do arquivo', 'warn') : null,
         !n && !F.prontuarioPendente(pr) ? h('span', { class: 'small muted' }, '—') : null);
-    } },
-    { key: 'pront', label: 'Prontuário', sort: (s) => prontDe(s)?.local || '', render: (s) => {
-      const pr = prontDe(s);
-      return pr ? h('span', { class: 'small' }, F.LOCAIS[pr.local]) : h('span', { class: 'small muted' }, '—');
     } },
     { key: 'com', label: 'Comunicação', render: (s) => {
       const c = ultimaCom(s);
@@ -95,7 +100,6 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
     } },
     { key: 'prio', label: 'Prioridade', sort: (s) => ['alta', 'normal', 'baixa'].indexOf(s.prioridade), render: (s) => (s.prioridade === 'normal' ? h('span', { class: 'small muted' }, '—') : badge(PRIO[s.prioridade], s.prioridade === 'alta' ? 'crit' : 'dim')) },
     { key: 'criado', label: 'Aberta em', sort: (s) => s.criado_em, render: (s) => h('span', { class: 'small' }, fmtDate(s.criado_em), h('div', { class: 'small muted' }, nomeDe(s.aberta_por))) },
-    { key: 'acao', label: '', render: (s) => h('a', { class: 'btn sm', href: ROOT + `solicitacoes/detalhe.html?id=${s.id}` }, 'Abrir') },
   ];
 
   function draw() {
@@ -104,6 +108,7 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
       && (!f.etapa || s.etapa === f.etapa)
       && (!f.prio || s.prioridade === f.prio)
       && (!f.papel || F.proximaAcao(s).papel === f.papel)
+      && (!f.dono || (f.dono === 'eu' ? s.assumido_por === ctx.ator : !s.assumido_por && F.aberta(s)))
       && contem([String(s.protocolo), s.relato, verPaciente ? nomePac(s) : '', F.TIPOS[s.tipo]], f.q));
     if (!shown.length) { body.replaceChildren(empty('Nenhuma solicitação com esses filtros.')); return; }
     body.replaceChildren(
@@ -121,6 +126,7 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
       { tipo: 'select', chave: 'tipo', rotulo: 'Todos os tipos', opcoes: Object.entries(F.TIPOS) },
       { tipo: 'select', chave: 'etapa', rotulo: 'Todas as etapas', opcoes: Object.entries(F.ETAPAS) },
       { tipo: 'select', chave: 'papel', rotulo: 'Próxima ação de qualquer um', opcoes: [['Call Center', 'Call Center'], ['Arquivo', 'Arquivo'], ['Recepção', 'Recepção'], ['Médico', 'Médico']] },
+      { tipo: 'select', chave: 'dono', rotulo: 'Qualquer responsável', opcoes: [['eu', 'Os que eu assumi'], ['livre', 'Sem dono']] },
       { tipo: 'select', chave: 'prio', rotulo: 'Todas as prioridades', opcoes: Object.entries(PRIO) },
       { tipo: 'select', chave: 'abertas', rotulo: 'Abertas e encerradas', opcoes: [['1', 'Só em aberto']] },
     ], f, draw),

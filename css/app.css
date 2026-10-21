@@ -215,8 +215,19 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
 .legenda { display: flex; flex-wrap: wrap; gap: 14px; font-size: .75rem; color: var(--ink-3); }
 .legenda .n { margin-right: 3px; }
 
+/* ---------------------------------------------------------------- cabeçalho em tela média */
+/* Com "Fila atual" e "Minha fila" separadas são oito destinos na barra, e entre 1100 e 1536 px a
+   navegação — a parte que de fato se usa — começava a cortar o último item. Some primeiro o que é
+   enfeite (o descritor da marca), depois o nome de quem está logado, que o seletor ao lado já diz,
+   e por último aperta o respiro dos itens. Abaixo de 1100 px a navegação vira gaveta e o problema
+   deixa de existir. */
+@media (max-width: 1535px) { .mark em { display: none; } }
+@media (max-width: 1380px) { .whoami .t { display: none; } }
+@media (max-width: 1300px) { .top { gap: 12px; } .navi { padding: 0 8px; gap: 6px; } .navsep { margin: 0 3px; } }
+@media (max-width: 1200px) { .navi { padding: 0 6px; } .whoami { padding-left: 10px; } .whoami .avatar { display: none; } .whoami select { max-width: 150px; } }
+
 /* ---------------------------------------------------------------- menu em tela estreita */
-@media (max-width: 1100px) {
+@media (max-width: 1140px) {
   .top { gap: 12px; }
   .burger { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; background: none; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--ink); }
   .nav {

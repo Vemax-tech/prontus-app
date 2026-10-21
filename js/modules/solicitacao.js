@@ -10,6 +10,7 @@ import * as F from '../fluxo.js';
 import {
   dossie, moverSolicitacao, moverProntuario, registrarComunicacao, registrarAvaliacao,
   registrarEntrega, concluirTarefa, auditarLeitura, nomeDe,
+  assumirSolicitacao, liberarSolicitacao,
 } from '../dados.js';
 import {
   start, h, run, pageHead, badge, icon, modal, formModal, confirmDlg, copyText,
@@ -45,16 +46,43 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
 
   // ---------------------------------------------------------------- ações da solicitação
   function acoesSolicitacao() {
-    const trans = F.transicoesDe(d.sol, ctx.papeis);
+    const trans = F.transicoesDe(d.sol, ctx.papeis, ctx.ator);
+    const assumir = botaoDePosse();
     if (!trans.length) {
-      return h('p', { class: 'small muted' }, F.aberta(d.sol)
+      return h('div', { class: 'acts' }, assumir || h('p', { class: 'small muted' }, F.aberta(d.sol)
         ? `Nenhuma ação sua nesta etapa.`
-        : 'Caso encerrado.');
+        : 'Caso encerrado.'));
     }
-    return h('div', { class: 'acts' }, trans.map((t) => h('button', {
+    return h('div', { class: 'acts' }, assumir, trans.map((t) => h('button', {
       class: 'btn' + (t.id === 'T15' ? ' sm danger' : t.para === 'concluida' ? ' primary' : ''),
       onclick: () => executar(t),
     }, t.rotulo)));
+  }
+
+  /**
+   * Assumir / liberar, no mesmo bloco das outras ações. Só aparece para quem é da vez: assumir um
+   * caso de outra equipe não faria sentido, e o banco recusaria.
+   */
+  function botaoDePosse() {
+    if (!F.aberta(d.sol)) return null;
+    const daVez = F.papeisDaEtapa(d.sol).some((p) => ctx.papeis.includes(p));
+    const outroMedico = ctx.papeis.includes('medico') && d.sol.medico_id && d.sol.medico_id !== ctx.ator;
+    if (!daVez || outroMedico) return null;
+    if (!d.sol.assumido_por) {
+      return h('button', {
+        class: 'btn primary',
+        onclick: () => agir(assumirSolicitacao({ id, papeis: ctx.papeis, ator: ctx.ator }),
+          'Caso assumido. Ele está na sua fila até passar para a próxima equipe.'),
+      }, 'Assumir o caso');
+    }
+    if (d.sol.assumido_por !== ctx.ator) return null;
+    return h('button', {
+      class: 'btn sm',
+      onclick: async () => {
+        if (!await confirmDlg('Devolver o caso à fila da equipe? Ele volta a aparecer para qualquer pessoa do seu papel, e fica registrado que você o teve.')) return;
+        return agir(liberarSolicitacao({ id, papeis: ctx.papeis, ator: ctx.ator }), 'Caso devolvido à fila da equipe.');
+      },
+    }, 'Liberar');
   }
 
   async function executar(t) {
@@ -168,13 +196,27 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
 
   function blocoProxima() {
     const p = F.proximaAcao(d.sol);
-    const meu = p.papel && (p.papel.includes(PAPEIS[ctx.papeis[0]]) || PAPEIS[ctx.papeis[0]] === p.papel);
+    // RN-10: quando a próxima ação é do médico, ela é do médico DESTE caso — dizer "é você" a
+    // outro profissional prometeria uma ação que a tela, corretamente, não oferece.
+    const outroMedico = ctx.papeis.includes('medico') && d.sol.medico_id && d.sol.medico_id !== ctx.ator;
+    const meu = !outroMedico && p.papel
+      && (p.papel.includes(PAPEIS[ctx.papeis[0]]) || PAPEIS[ctx.papeis[0]] === p.papel);
     const fim = !F.aberta(d.sol);
     return h('div', { class: 'next' + (fim ? ' done' : '') },
       h('div', {},
         h('p', { class: 'k' }, fim ? 'Caso encerrado' : 'Próxima ação'),
         h('h2', {}, p.texto),
-        p.papel && h('p', { class: 'who' }, 'Responsável: ', h('b', {}, p.papel), meu ? h('span', { class: 'eu' }, ' — é você') : null),
+        p.papel && h('p', { class: 'who' }, 'Responsável: ', h('b', {}, p.papel),
+          // Quem respondeu "sou eu" vem antes do papel na hora de cobrar: se alguém assumiu, é o
+          // nome dessa pessoa que vale, não mais "a equipe tal".
+          d.sol.assumido_por
+            ? h('span', {}, ' · ', h('b', {}, nomeDe(d.sol.assumido_por)),
+              d.sol.assumido_por === ctx.ator ? h('span', { class: 'eu' }, ' — é você') : null)
+            : meu ? h('span', { class: 'eu' }, ' — é você') : null),
+        !fim && !d.sol.assumido_por && h('p', { class: 'small muted', style: 'margin-top:5px' },
+          'Ninguém assumiu este caso ainda: ele está na Fila atual da equipe.'),
+        outroMedico && !fim && h('p', { class: 'small muted', style: 'margin-top:5px' },
+          `A decisão clínica deste caso é de ${nomeDe(d.sol.medico_id)}, a quem ele foi encaminhado.`),
         fim && F.prontuarioPendente(d.prontuario) && h('p', { class: 'small', style: 'color:var(--warn);margin-top:5px' },
           'Atendimento encerrado, mas o prontuário ainda não voltou ao arquivo. A pendência segue na fila do arquivo.')),
       acoesSolicitacao());
@@ -195,6 +237,9 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
         h('dt', {}, 'Tempo na etapa'), h('dd', {}, desde(d.sol.etapa_desde)),
         h('dt', {}, 'Prioridade'), h('dd', {}, d.sol.prioridade === 'alta' ? badge('Alta', 'crit') : PRIO[d.sol.prioridade]),
         h('dt', {}, 'Aberta por'), h('dd', {}, nomeDe(d.sol.aberta_por), h('div', { class: 'micro muted' }, quando(d.sol.criado_em))),
+        F.aberta(d.sol) && [h('dt', {}, 'Com quem está'), h('dd', {}, d.sol.assumido_por
+          ? h('span', {}, nomeDe(d.sol.assumido_por), h('div', { class: 'micro muted' }, 'assumiu ' + desde(d.sol.assumido_em)))
+          : h('span', { class: 'small muted' }, 'ninguém ainda'))],
         d.sol.medico_id && [h('dt', {}, 'Médico'), h('dd', {}, nomeDe(d.sol.medico_id))],
         d.sol.desfecho && [h('dt', {}, 'Desfecho'), h('dd', {}, F.DESFECHOS[d.sol.desfecho], d.sol.reaberturas ? h('div', { class: 'micro muted' }, `${d.sol.reaberturas} reabertura(s)`) : null)],
         d.sol.motivo && [h('dt', {}, 'Motivo'), h('dd', {}, d.sol.motivo)]),
@@ -369,7 +414,11 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
       h('span', {}, fim ? h('span', { class: 'small muted' }, t.titulo) : h('span', { class: 'small' }, t.titulo),
         h('div', { class: 'micro muted' }, PAPEIS[t.papel_responsavel] + (t.responsavel_id ? ' · ' + nomeDe(t.responsavel_id) : ''))),
       fim ? badge('concluída', 'dim')
-        : h('button', { class: 'btn sm', onclick: () => agir(concluirTarefa({ id: t.id, ator: ctx.ator }), 'Tarefa concluída.') }, 'Concluir'));
+        // Só a equipe dona da tarefa a conclui: para as outras fica o rótulo, não um botão que o
+        // banco recusaria. Quem é dono está em t.papel_responsavel, não na matriz de permissões.
+        : ctx.papeis.includes(t.papel_responsavel)
+          ? h('button', { class: 'btn sm', onclick: () => agir(concluirTarefa({ id: t.id, papeis: ctx.papeis, ator: ctx.ator }), 'Tarefa concluída.') }, 'Concluir')
+          : badge('pendente', 'warn'));
     return painel('Tarefas', pend.length ? badge(`${pend.length} pendente${pend.length > 1 ? 's' : ''}`, 'warn') : badge('nenhuma pendente', 'ok'),
       pend.length || feitas.length
         ? h('ul', { class: 'ul-list' }, pend.map((t) => linha(t, false)), feitas.map((t) => linha(t, true)))
@@ -381,7 +430,9 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
       nota('', 'Somente acréscimo: reabertura e cancelamento não apagam nada.'),
       h('ul', { class: 'tl', style: 'margin-top:12px' }, [...d.eventos].reverse().map((e) => h('li', { class: F.ETAPAS_FIM.includes(e.para_etapa) ? 'marco' : '' },
         h('div', { class: 'row between' },
-          h('b', {}, e.de_etapa ? `${F.ETAPAS[e.de_etapa]} → ${F.ETAPAS[e.para_etapa]}` : F.ETAPAS[e.para_etapa]),
+          // `titulo` existe nos eventos que não são mudança de etapa (assumir, liberar): sem ele a
+          // linha sairia como "Aguardando médico → Aguardando médico".
+          h('b', {}, e.titulo || (e.de_etapa ? `${F.ETAPAS[e.de_etapa]} → ${F.ETAPAS[e.para_etapa]}` : F.ETAPAS[e.para_etapa])),
           h('span', { class: 'when' }, quando(e.criado_em))),
         h('p', { class: 'micro muted' }, nomeDe(e.ator_id), e.nota ? ' · ' + e.nota : '')))));
   }

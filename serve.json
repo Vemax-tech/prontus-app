@@ -1,4 +1,8 @@
 {
   "cleanUrls": false,
-  "trailingSlash": true
+  "trailingSlash": true,
+  "rewrites": [
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/:pasta([a-z]+)", "destination": "/:pasta/index.html" }
+  ]
 }

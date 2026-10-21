@@ -15,9 +15,12 @@
 //  NENHUM DADO REAL DE PACIENTE. Tudo sintético, inventado para a apresentação.
 // =====================================================================================
 import * as F from './fluxo.js';
-import { pode } from './permissoes.js';
+import { pode, PAPEIS } from './permissoes.js';
 
-const uid = (p) => p + '-' + Math.random().toString(36).slice(2, 10);
+// Id sequencial, NÃO aleatório, e o contador vive dentro do db: cada tela é uma página própria,
+// com recarga completa, e o id impresso numa lista precisa continuar valendo na tela seguinte.
+// Guardar o contador junto com os dados é o que impede um id novo de colidir com um já salvo.
+const uid = (p) => p + '-' + String(++db.seq).padStart(4, '0');
 const agora = () => new Date().toISOString();
 const horasAtras = (h) => new Date(Date.now() - h * 3600e3).toISOString();
 const ok = (data) => ({ data, error: null });
@@ -26,6 +29,7 @@ const erro = (message, code = 'P0001') => ({ data: null, error: { code, message 
 const negado = (o) => erro(o || 'Sem permissão para esta ação.', '42501');
 
 export const db = {
+  seq: 0,
   empresa: { id: 'emp-1', nome: 'Clínica (demonstração)' },
   usuarios: [], pacientes: [], prontuarios: [], movimentos: [],
   solicitacoes: [], tarefas: [], eventos: [],
@@ -91,6 +95,7 @@ function semearSolicitacao(spec) {
     tipo: spec.tipo, etapa: 'aberta', etapa_desde: horasAtras(t), desfecho: null,
     prioridade: spec.prioridade || 'normal', paciente_id: pac.id, prontuario_id: pront.id,
     relato: spec.relato, aberta_por: cc, responsavel_id: cc,
+    assumido_por: null, assumido_em: null,
     criado_em: horasAtras(t), concluida_em: null, reaberturas: 0, motivo: null,
   };
   db.solicitacoes.push(sol);
@@ -190,11 +195,33 @@ function semearSolicitacao(spec) {
     for (const m of etapas[spec.devolucao] || []) mov(m, m === 'devolvido' ? 'u-re1' : 'u-ar1', m === 'arquivado' ? `Devolvido à estante ${pront.local_arquivo}.` : '');
   }
   if (pront.local !== 'arquivo') { pront.solicitacao_id = sol.id; }
+
+  // Posse na etapa em que o caso parou. `assumido: false` no roteiro deixa o caso SEM dono, para a
+  // apresentação ter as duas visões com conteúdo: a "Fila atual" com o que ninguém pegou e a
+  // "Minha fila" com o que já tem nome. Sem isso, uma das duas telas abriria vazia.
+  if (F.aberta(sol) && spec.assumido !== false) {
+    const papel = F.papeisDaEtapa(sol)[0];
+    const dono = papel === 'medico' ? sol.medico_id
+      : papel === 'callcenter' ? cc
+        : equipeDoPapel(papel)[0]?.id;
+    if (dono) {
+      sol.assumido_por = dono; sol.assumido_em = sol.etapa_desde;
+      sincronizarTarefa(sol, dono);
+      evNota(sol, dono, 'Caso assumido', `${nomeDe(dono)} assumiu a etapa "${F.ETAPAS[sol.etapa]}".`, sol.etapa_desde);
+    }
+  }
   return sol;
 }
 
 function ev(sol, de, para, ator, nota) {
   db.eventos.push({ id: uid('ev'), solicitacao_id: sol.id, de_etapa: de, para_etapa: para, ator_id: ator, nota, criado_em: sol.etapa_desde });
+}
+/**
+ * Evento que não é mudança de etapa — quem assumiu, quem liberou. Entra na MESMA linha do tempo,
+ * de propósito: é assim que, no fim, dá para ler quem respondeu por cada trecho do caso.
+ */
+function evNota(sol, ator, titulo, nota, quando = agora()) {
+  db.eventos.push({ id: uid('ev'), solicitacao_id: sol.id, de_etapa: null, para_etapa: sol.etapa, titulo, ator_id: ator, nota, criado_em: quando });
 }
 function tarefa(sol, papel, titulo, estado, responsavel = null) {
   db.tarefas.push({ id: uid('tar'), solicitacao_id: sol.id, papel_responsavel: papel, titulo, estado, responsavel_id: responsavel, criado_em: sol.etapa_desde, concluida_em: estado === 'concluida' ? agora() : null });
@@ -204,11 +231,11 @@ function tarefa(sol, papel, titulo, estado, responsavel = null) {
 // Cobre todas as etapas, os dois fluxos, as duas formas de entrega, o caso não aprovado,
 // a correção com versão, a tentativa de envio sem confirmação e as pendências de arquivamento.
 const ROTEIRO = [
-  { tipo: 'duvida_correcao', ate: 'aberta', pac: 0, horas: 3, relato: 'Paciente diz que a posologia na receita está ilegível e quer confirmar a dose.' },
+  { tipo: 'duvida_correcao', ate: 'aberta', pac: 0, horas: 3, assumido: false, relato: 'Paciente diz que a posologia na receita está ilegível e quer confirmar a dose.' },
   { tipo: 'pedido_receita', ate: 'aberta', pac: 1, horas: 2, relato: 'Pede renovação da receita de uso contínuo.' },
-  { tipo: 'pedido_receita', ate: 'pedido_arquivo', pac: 2, horas: 26, relato: 'Pede nova receita; acabou a medicação nesta semana.', prioridade: 'alta' },
+  { tipo: 'pedido_receita', ate: 'pedido_arquivo', pac: 2, horas: 26, assumido: false, relato: 'Pede nova receita; acabou a medicação nesta semana.', prioridade: 'alta' },
   { tipo: 'duvida_correcao', ate: 'localizado', pac: 3, horas: 30, relato: 'Nome do medicamento parece trocado em relação ao que toma há dois anos.' },
-  { tipo: 'pedido_receita', ate: 'entregue', pac: 4, horas: 10, relato: 'Pede receita para continuar o tratamento.' },
+  { tipo: 'pedido_receita', ate: 'entregue', pac: 4, horas: 10, assumido: false, relato: 'Pede receita para continuar o tratamento.' },
   { tipo: 'duvida_correcao', ate: 'recebido', pac: 5, horas: 8, relato: 'Quer saber se pode tomar os dois remédios no mesmo horário.' },
   { tipo: 'pedido_receita', ate: 'ao_medico', pac: 6, horas: 20, relato: 'Receita vencida; pede emissão de nova via.', medico: 'u-me2' },
   { tipo: 'duvida_correcao', ate: 'ao_medico', pac: 7, horas: 48, relato: 'Receita sem a quantidade de dias de uso.', prioridade: 'alta' },
@@ -219,18 +246,19 @@ const ROTEIRO = [
   { tipo: 'pedido_receita', ate: 'contato_paciente', pac: 0, horas: 36, relato: 'Segunda via da receita, perdeu a anterior.', resultadoContato: 'nao_atendeu', devolucao: 'arquivado' },
   { tipo: 'duvida_correcao', ate: 'concluida', pac: 1, horas: 60, relato: 'Dúvida sobre jejum antes de tomar o medicamento.', devolucao: 'arquivado', cc: 'u-cc2' },
   // Daqui para baixo, um paciente por atendimento.
-  { tipo: 'pedido_receita', ate: 'entrega', pac: 10, horas: 50, relato: 'Receita de uso contínuo; prefere retirar na clínica.', modo: 'fisica', entrega: 'orientada', devolucao: 'arquivado' },
+  { tipo: 'pedido_receita', ate: 'entrega', pac: 10, horas: 50, assumido: false, relato: 'Receita de uso contínuo; prefere retirar na clínica.', modo: 'fisica', entrega: 'orientada', devolucao: 'arquivado' },
   { tipo: 'pedido_receita', ate: 'entrega', pac: 11, horas: 44, relato: 'Pede receita e aceita receber por mensagem.', modo: 'digital', entrega: 'tentado', devolucao: 'recebido', cc: 'u-cc2' },
   { tipo: 'pedido_receita', ate: 'concluida', pac: 12, horas: 90, relato: 'Renovação de receita, enviada digitalmente.', modo: 'digital', entrega: 'enviado', devolucao: 'arquivado' },
   { tipo: 'pedido_receita', ate: 'concluida', pac: 13, horas: 110, relato: 'Receita retirada presencialmente pelo filho, autorizado.', modo: 'fisica', entrega: 'retirada', devolucao: 'arquivado', cc: 'u-cc2' },
   { tipo: 'pedido_receita', ate: 'avaliado', pac: 14, horas: 18, relato: 'Pede medicação que não consta no histórico.', desfecho: 'nao_aprovado', devolucao: 'arquivado' },
-  { tipo: 'duvida_correcao', ate: 'ao_medico', pac: 15, horas: 72, relato: 'Pergunta se pode substituir por genérico.', prioridade: 'alta', medico: 'u-me2' },
+  { tipo: 'duvida_correcao', ate: 'ao_medico', pac: 15, horas: 72, relato: 'Pergunta se pode substituir por genérico.', prioridade: 'alta', assumido: false },
   // Fluxo 1 esperando o Call Center retornar ao paciente: é o caso em que a conclusão depende
   // de contato efetivo, e nenhuma tentativa frustrada basta (RN-06 + RN-12).
-  { tipo: 'duvida_correcao', ate: 'avisado_grupo', pac: 16, horas: 28, relato: 'Quer confirmar se a dose da manhã mudou depois da última consulta.', devolucao: 'recebido' },
+  { tipo: 'duvida_correcao', ate: 'avisado_grupo', pac: 16, horas: 28, assumido: false, relato: 'Quer confirmar se a dose da manhã mudou depois da última consulta.', devolucao: 'recebido' },
 ];
 
 export function semear() {
+  db.seq = 0;
   db.usuarios = EQUIPE.map((u) => ({ ...u, ativo: true }));
   db.pacientes = PACIENTES.map(([nome, nasc, tel], i) => ({
     id: 'pac-' + (i + 1), empresa_id: db.empresa.id, nome, nascimento: nasc, telefone: tel,
@@ -246,7 +274,42 @@ export function semear() {
   ROTEIRO.forEach(semearSolicitacao);
   return db;
 }
-semear();
+
+// ------------------------------------------------- persistência DA DEMONSTRAÇÃO (só esta aba)
+//
+// O sistema não é uma página só: cada tela é um HTML próprio e toda navegação é uma recarga
+// completa. Sem guardar nada, o módulo ressemearia a cada clique e o atendimento que a Recepção
+// acabou de encaminhar voltaria ao estado inicial na tela seguinte — a demonstração não teria
+// como mostrar um caso andando.
+//
+// `sessionStorage`, e não `localStorage`, por três razões: morre ao fechar a aba, não atravessa
+// para outra aba e não sobrevive ao fim da apresentação. O armazenamento é melhor esforço: se o
+// navegador recusar (aba anônima, política restritiva), cada página simplesmente ressemeia e a
+// demonstração continua de pé, só sem memória entre telas.
+//
+// EM PRODUÇÃO ISTO DESAPARECE junto com o resto deste arquivo. O estado vive no banco e nenhum
+// dado clínico encosta no armazenamento do navegador.
+const CHAVE_DB = 'prontus_db';
+// Suba este número sempre que a FORMA dos dados mudar (campo novo, campo que sumiu). Uma aba
+// aberta desde antes da mudança tem o modelo velho guardado, e carregá-lo daria uma tela quebrada
+// por um motivo invisível — é mais barato descartar e semear de novo.
+const VERSAO_DB = 2;
+
+function salvar() {
+  try { sessionStorage.setItem(CHAVE_DB, JSON.stringify({ v: VERSAO_DB, db })); } catch { /* sem storage: vale só esta página */ }
+}
+function carregar() {
+  try {
+    const bruto = sessionStorage.getItem(CHAVE_DB);
+    if (!bruto) return false;
+    const salvo = JSON.parse(bruto);
+    if (salvo?.v !== VERSAO_DB || !Array.isArray(salvo.db?.solicitacoes) || typeof salvo.db.seq !== 'number') return false;
+    Object.assign(db, salvo.db);
+    return true;
+  } catch { return false; }
+}
+
+if (!carregar()) { semear(); salvar(); }
 
 // ---------------------------------------------------------------- leitura
 const TABELAS = { solicitacoes: 'solicitacoes', pacientes: 'pacientes', prontuarios: 'prontuarios', movimentos: 'movimentos', tarefas: 'tarefas', eventos: 'eventos', avaliacoes: 'avaliacoes', documentos: 'documentos', comunicacoes: 'comunicacoes', entregas: 'entregas', usuarios: 'usuarios', auditoria: 'auditoria' };
@@ -287,9 +350,13 @@ export async function dossie(id) {
 /** RN-18 / item 11: a LEITURA de conteúdo clínico também é auditada, não só a alteração. */
 export function auditarLeitura(papeis, recurso, solicitacaoId, atorId) {
   db.auditoria.push({ id: uid('aud'), acao: 'leitura', recurso, solicitacao_id: solicitacaoId, ator_id: atorId, papeis: [...papeis], quando: agora() });
+  salvar();
 }
+// Toda escrita bem-sucedida passa por aqui, então é daqui que a demonstração guarda o estado:
+// um ponto só, em vez de um salvar() espalhado por cada função.
 const auditarEscrita = (acao, recurso, solicitacaoId, atorId, detalhe) => {
   db.auditoria.push({ id: uid('aud'), acao, recurso, solicitacao_id: solicitacaoId, ator_id: atorId, detalhe, quando: agora() });
+  salvar();
 };
 
 // ---------------------------------------------------------------- escrita (espelho das RPC)
@@ -304,6 +371,8 @@ export async function abrirSolicitacao({ tipo, paciente_id, relato, prioridade =
     id: uid('sol'), empresa_id: db.empresa.id, protocolo: 1000 + db.solicitacoes.length + 1,
     tipo, etapa: 'aberta', etapa_desde: agora(), desfecho: null, prioridade,
     paciente_id, prontuario_id: pront?.id || null, relato, aberta_por: ator, responsavel_id: ator,
+    // Quem registra a ligação já está com o caso: abrir é a primeira etapa, e ela é de quem abriu.
+    assumido_por: ator, assumido_em: agora(),
     criado_em: agora(), concluida_em: null, reaberturas: 0, motivo: null,
   };
   db.solicitacoes.push(sol);
@@ -320,11 +389,70 @@ export function possivelDuplicidade({ tipo, paciente_id }, janelaHoras = 24) {
     && F.aberta(s) && new Date(s.criado_em).getTime() >= limite).map((s) => ({ ...s }));
 }
 
+// ------------------------------------------------------------------ quem está com o caso AGORA
+//
+// Dois níveis, que o sistema não confunde:
+//   · a ETAPA diz de qual EQUIPE é a vez (js/fluxo.js, papeisDaEtapa);
+//   · `assumido_por` diz QUAL PESSOA daquela equipe respondeu por ela.
+//
+// Enquanto ninguém assume, o caso fica na "Fila atual" — o trabalho que a equipe ainda não pegou.
+// Assumido, sai de lá e entra na "Minha fila" de quem assumiu, que passa a ser o nome a cobrar.
+// A posse vale por etapa: quando o caso passa para outra equipe, ela se desfaz sozinha (abaixo, em
+// moverSolicitacao) — ninguém continua "dono" de um trecho que não é mais dele. Quem respondeu por
+// cada trecho fica na linha do tempo, e é isso que dá o rastro do começo ao fim.
+
+/** A tarefa pendente da etapa segue o dono do caso: as duas visões nunca divergem. */
+function sincronizarTarefa(sol, atorOuNulo) {
+  const daVez = F.papeisDaEtapa(sol);
+  db.tarefas
+    .filter((t) => t.solicitacao_id === sol.id && t.estado === 'pendente' && daVez.includes(t.papel_responsavel))
+    .forEach((t) => { t.responsavel_id = atorOuNulo; });
+}
+
+/** Papéis do usuário que ainda estão na vez nesta etapa. Vazio = não é da vez dele. */
+const papeisNaVez = (sol, papeis) => F.papeisDaEtapa(sol).filter((p) => papeis.includes(p));
+
+/** Espelho de uma futura RPC assumir_solicitacao(). */
+export async function assumirSolicitacao({ id, papeis, ator }) {
+  const sol = db.solicitacoes.find((s) => s.id === id);
+  if (!sol) return erro('Solicitação não encontrada.', 'PGRST116');
+  if (!F.aberta(sol)) return erro('O caso já foi encerrado: não há etapa para assumir.');
+  if (!papeisNaVez(sol, papeis).length) return negado(`Nesta etapa a vez é do papel ${F.proximaAcao(sol).papel}.`);
+  // RN-10: o caso encaminhado a um médico só é assumido por aquele médico.
+  if (papeis.includes('medico') && sol.medico_id && sol.medico_id !== ator) {
+    return negado('Este caso foi encaminhado a outro profissional.');
+  }
+  if (sol.assumido_por === ator) return ok({ ...sol });
+  if (sol.assumido_por) return erro(`${nomeDe(sol.assumido_por)} já assumiu este caso. Peça para liberar antes.`);
+  sol.assumido_por = ator; sol.assumido_em = agora();
+  sincronizarTarefa(sol, ator);
+  evNota(sol, ator, 'Caso assumido', `${nomeDe(ator)} assumiu a etapa "${F.ETAPAS[sol.etapa]}".`);
+  auditarEscrita('assumir', 'solicitacao', id, ator, F.ETAPAS[sol.etapa]);
+  return ok({ ...sol });
+}
+
+/** Devolve o caso à fila da equipe. Quem assumiu libera; a coordenação também, para destravar. */
+export async function liberarSolicitacao({ id, papeis, ator, motivo }) {
+  const sol = db.solicitacoes.find((s) => s.id === id);
+  if (!sol) return erro('Solicitação não encontrada.', 'PGRST116');
+  if (!sol.assumido_por) return erro('Este caso não está assumido por ninguém.');
+  const coordena = pode(papeis, 'solicitacao_editar', 'editar');
+  if (sol.assumido_por !== ator && !coordena) return negado('Só quem assumiu o caso pode liberá-lo.');
+  const quem = sol.assumido_por;
+  sol.assumido_por = null; sol.assumido_em = null;
+  sincronizarTarefa(sol, null);
+  evNota(sol, ator, 'Caso liberado', quem === ator
+    ? `${nomeDe(ator)} devolveu o caso à fila da equipe.${motivo ? ' — ' + motivo : ''}`
+    : `${nomeDe(ator)} liberou o caso que estava com ${nomeDe(quem)}.${motivo ? ' — ' + motivo : ''}`);
+  auditarEscrita('liberar', 'solicitacao', id, ator, F.ETAPAS[sol.etapa]);
+  return ok({ ...sol });
+}
+
 /** Espelho de mover_solicitacao(): valida transição, papel, condições e grava o evento. Tudo ou nada. */
 export async function moverSolicitacao({ id, transicao, papeis, ator, motivo, nota }) {
   const sol = db.solicitacoes.find((s) => s.id === id);
   if (!sol) return erro('Solicitação não encontrada.', 'PGRST116');
-  const t = F.transicoesDe(sol, papeis).find((x) => x.id === transicao && x.de === sol.etapa);
+  const t = F.transicoesDe(sol, papeis, ator).find((x) => x.id === transicao && x.de === sol.etapa);
   if (!t) return negado('Essa ação não é permitida para o seu papel nesta etapa.');
   if (t.exigeMotivo && !String(motivo || '').trim()) return erro('Informe o motivo.');
   if (t.exigeConferencia && !db.movimentos.some((m) => m.solicitacao_id === id && m.tipo === 'conferido')) {
@@ -341,6 +469,13 @@ export async function moverSolicitacao({ id, transicao, papeis, ator, motivo, no
   if (t.desfecho) { sol.desfecho = t.desfecho; sol.concluida_em = agora(); }
   if (t.id === 'T16') { sol.desfecho = null; sol.concluida_em = null; sol.reaberturas += 1; }   // RN-15: histórico preservado
   if (motivo) sol.motivo = motivo;
+  // A posse vale por etapa. Se a nova etapa ainda é da equipe de quem assumiu, ele continua com o
+  // caso (triagem → pedido de prontuário, por exemplo); se passou para outra equipe, o caso volta
+  // para a fila dela sem dono — e o nome de quem respondeu pelo trecho anterior fica no histórico.
+  if (sol.assumido_por) {
+    const papeisDoDono = usuarioPor(sol.assumido_por)?.papeis || [];
+    if (!papeisNaVez(sol, papeisDoDono).length) { sol.assumido_por = null; sol.assumido_em = null; }
+  }
   ev(sol, de, t.para, ator, nota || t.rotulo + (motivo ? ` — ${motivo}` : ''));
   db.tarefas.filter((x) => x.solicitacao_id === id && x.estado === 'pendente').forEach((x) => {
     if (F.ETAPAS_FIM.includes(t.para) && t.desfecho !== 'nao_aprovada') { x.estado = 'concluida'; x.concluida_em = agora(); }
@@ -352,11 +487,12 @@ export async function moverSolicitacao({ id, transicao, papeis, ator, motivo, no
 
 function proximaTarefa(sol) {
   const prox = F.proximaAcao(sol);
-  if (!prox.papel) return;
-  const papel = { 'Call Center': 'callcenter', Arquivo: 'arquivo', 'Recepção': 'recepcao', 'Médico': 'medico' }[prox.papel]
-    || (prox.papel.includes('Call Center') ? 'callcenter' : 'recepcao');
+  const papel = prox.papeis[0];
+  if (!papel) return;
   const jaTem = db.tarefas.some((t) => t.solicitacao_id === sol.id && t.estado === 'pendente' && t.papel_responsavel === papel);
-  if (!jaTem) tarefa(sol, papel, prox.texto, 'pendente', papel === 'medico' ? sol.medico_id : null);
+  // A tarefa nasce com dono quando o caso já tem um: de quem assumiu, ou do médico a quem foi
+  // encaminhado. Sem dono, ela fica na fila da equipe à espera de alguém assumir.
+  if (!jaTem) tarefa(sol, papel, prox.texto, 'pendente', sol.assumido_por || (papel === 'medico' ? sol.medico_id : null));
 }
 
 /** Espelho de mover_prontuario(): custódia única, transição válida, papel certo. RN-07, RN-08, RN-09. */
@@ -433,12 +569,18 @@ export async function registrarEntrega({ solicitacao_id, modo, estado, nota, pap
   return ok({ ...ent });
 }
 
-export async function concluirTarefa({ id, ator }) {
+/** A tarefa é da equipe a quem ela foi dirigida: ninguém dá por feito o trabalho de outro papel. */
+export async function concluirTarefa({ id, papeis = [], ator }) {
   const t = db.tarefas.find((x) => x.id === id);
   if (!t) return erro('Tarefa não encontrada.', 'PGRST116');
+  if (!papeis.includes(t.papel_responsavel)) {
+    return negado(`Esta tarefa é do papel ${PAPEIS[t.papel_responsavel] || t.papel_responsavel}.`);
+  }
+  if (t.estado === 'concluida') return ok({ ...t });
   t.estado = 'concluida'; t.concluida_em = agora();
+  auditarEscrita('tarefa', 'tarefa', t.solicitacao_id, ator, t.titulo);
   return ok({ ...t });
 }
 
 /** Volta tudo ao estado inicial — útil para reapresentar sem resíduo da demonstração anterior. */
-export async function reiniciar() { semear(); return ok(true); }
+export async function reiniciar() { semear(); salvar(); return ok(true); }
