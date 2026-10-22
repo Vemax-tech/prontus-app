@@ -86,7 +86,10 @@ export const TRANSICOES = [
   { id: 'T07', de: 'com_medico', para: 'retorno_disponivel', papeis: ['recepcao'], rotulo: 'Registrar o retorno', principal: true },
   { id: 'T08', de: 'com_medico', para: 'aguardando_esclarecimento', papeis: ['recepcao'], rotulo: 'Médico pediu esclarecimento' },
   { id: 'T09', de: 'aguardando_esclarecimento', para: 'com_medico', papeis: ['callcenter', 'recepcao'], rotulo: 'Prestar o esclarecimento', principal: true },
-  { id: 'T10', de: 'retorno_disponivel', para: 'aguardando_contato_paciente', papeis: ['recepcao'], rotulo: 'Avisar no grupo', principal: true },
+  // `exigeComunicacao` aqui conserta uma lacuna: "avisar no grupo" movia a etapa e não deixava
+  // registro NENHUM do aviso — o sistema afirmava que o Call Center tinha sido avisado sem ter
+  // como mostrar onde. Agora o passo grava a comunicação, com o texto que foi publicado.
+  { id: 'T10', de: 'retorno_disponivel', para: 'aguardando_contato_paciente', papeis: ['recepcao'], rotulo: 'Avisar no grupo', exigeComunicacao: 'aviso_retorno', principal: true },
   { id: 'T11', de: 'aguardando_contato_paciente', para: 'concluida', papeis: ['callcenter'], tipos: ['duvida_correcao'], rotulo: 'Concluir: dúvida esclarecida', desfecho: 'resolvida', principal: true },
   { id: 'T12', de: 'aguardando_contato_paciente', para: 'aguardando_entrega', papeis: ['callcenter'], tipos: ['pedido_receita'], rotulo: 'Paciente avisado: definir entrega', principal: true },
   { id: 'T13', de: 'aguardando_entrega', para: 'concluida', papeis: ['callcenter', 'recepcao'], tipos: ['pedido_receita'], rotulo: 'Concluir: entrega registrada', desfecho: 'resolvida', principal: true },

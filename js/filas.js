@@ -10,7 +10,8 @@
 // Somar os contadores das filas conta o caso duas vezes — por isso todo total aqui passa por um
 // Set de ids. É puro e sem DOM, como js/fluxo.js e js/permissoes.js.
 import * as F from './fluxo.js';
-import { listar } from './dados.js';
+import { listar, usuarioPor } from './dados.js';
+import { situacao } from './prazos.js';
 
 /** As sete listas que cada tela de fila precisa, numa chamada. Vira uma view/RPC no banco. */
 export async function dadosDasFilas() {
@@ -72,15 +73,64 @@ export function filasDoPapel(papel, D) {
  * registros de movimentação, não por posse de caso, e misturar os dois eixos é o que o sistema
  * evita em todo lugar. Eles ficam sempre como trabalho da equipe.
  */
-export function repartir(fila, ator) {
+export function repartir(fila, ator, papel = null) {
   const livres = [], meus = [], assumidos = [], custodia = [];
   for (const it of fila.itens) {
-    if (!it.protocolo) custodia.push(it);
-    else if (it.assumido_por === ator) meus.push(it);
-    else if (it.assumido_por) assumidos.push(it);
+    if (!it.protocolo) { custodia.push(it); continue; }
+    if (it.assumido_por === ator) { meus.push(it); continue; }
+    // DONO DE OUTRA EQUIPE NÃO FALA PELA SUA.
+    //
+    // Há etapas em que duas equipes agem (a entrega, por exemplo, que o Call Center define e a
+    // Recepção confirma). Quando o Call Center assume o caso, ele continua precisando da
+    // Recepção — e, se a posse dele escondesse o caso da fila dela, o trabalho sumiria da vista
+    // de quem tem de fazê-lo. Para a SUA equipe, um caso que ninguém da sua equipe pegou está
+    // solto, ainda que tenha dono do outro lado.
+    const papeisDoDono = it.assumido_por ? (usuarioPor(it.assumido_por)?.papeis || []) : [];
+    if (it.assumido_por && (!papel || papeisDoDono.includes(papel))) assumidos.push(it);
     else livres.push(it);
   }
   return { ...fila, livres, meus, assumidos, custodia };
+}
+
+/**
+ * O CASO MAIS URGENTE DO PAPEL — o que o botão "Próximo caso" abre.
+ *
+ * Quem atende em série não quer escolher: quer o próximo. Escolher custa ler a fila inteira, e
+ * ler a fila inteira várias vezes por hora é como um caso urgente fica para trás enquanto alguém
+ * resolve três fáceis. A ordem é a mesma que uma pessoa experiente usaria, nesta sequência:
+ *
+ *   1. o que já estourou a meta da clínica, depois o que está perto dela;
+ *   2. prioridade alta antes de normal, normal antes de baixa;
+ *   3. empatou, o que está parado há mais tempo.
+ *
+ * O que já é de OUTRA pessoa fica de fora: "o próximo" é o próximo que é seu para pegar.
+ */
+export function proximoCaso(papel, ator, D, metas) {
+  const vistos = new Set();
+  const lista = [];
+  for (const f of filasDoPapel(papel, D)) {
+    for (const it of f.itens) {
+      if (!it.protocolo || vistos.has(it.id)) continue;
+      // Mesma regra da fila: dono de outra equipe não torna o caso "de outra pessoa" para você.
+      const dono = it.assumido_por;
+      if (dono && dono !== ator && (usuarioPor(dono)?.papeis || []).includes(papel)) continue;
+      vistos.add(it.id);
+      lista.push(it);
+    }
+  }
+  const peso = (s) => {
+    const sit = situacao(s, metas);
+    return [
+      sit.estado === 'atrasada' ? 0 : sit.estado === 'atencao' ? 1 : 2,
+      ['alta', 'normal', 'baixa'].indexOf(s.prioridade || 'normal'),
+      new Date(s.etapa_desde).getTime(),
+    ];
+  };
+  return lista.sort((a, b) => {
+    const pa = peso(a), pb = peso(b);
+    for (let i = 0; i < pa.length; i += 1) if (pa[i] !== pb[i]) return pa[i] - pb[i];
+    return 0;
+  })[0] || null;
 }
 
 /** Itens distintos de um conjunto de listas — o Set é o que impede a contagem dobrada. */
@@ -91,7 +141,7 @@ const distintos = (listas) => new Set(listas.flat().map((it) => it.id)).size;
  * aparece em mais de uma fila.
  */
 export function contarFilas(papel, ator, D) {
-  const partes = filasDoPapel(papel, D).map((f) => repartir(f, ator));
+  const partes = filasDoPapel(papel, D).map((f) => repartir(f, ator, papel));
   return {
     atual: distintos(partes.map((f) => [...f.livres, ...f.custodia])),
     minha: distintos(partes.map((f) => f.meus)),

@@ -69,6 +69,25 @@
 /* Lido não some: some do contador. Continua legível, só perde o destaque. */
 .avisos .ul-list li.lido a { color: var(--ink-3); }
 .avisos .ul-list li.lido b { font-weight: 500; }
+/* Barra do recado pronto, dentro do formulário que registra a comunicação. O aviso embaixo é
+   parte do desenho, não enfeite: abrir o WhatsApp não registra nada, e quem não lê isso acha
+   que registrou. */
+.recado {
+  margin: 4px 0 10px; padding: 10px 12px; border: 1px dashed var(--line-2);
+  border-radius: var(--r-2); background: var(--surface-2);
+}
+.recado .row { gap: 8px; margin-bottom: 7px; }
+.recado p { margin: 0; }
+
+/* Rodapé do sininho: o interruptor do aviso do sistema. Fica grudado embaixo da lista porque é
+   ali que a pessoa está pensando no assunto — e é o único lugar em que pedir permissão de
+   notificação ao navegador tem contexto. */
+.avisos .af {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border-top: 1px solid var(--line); background: var(--surface-2);
+  position: sticky; bottom: 0;
+}
+.avisos .af p { margin: 0; flex: 1; }
 
 /* Quem sou eu agora: na demonstração é um seletor; em produção vira o nome de quem entrou. */
 .tools { display: flex; align-items: center; gap: 10px; margin-left: auto; flex: none; }
@@ -222,6 +241,9 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
 .item .id:hover { color: var(--brand-2); text-decoration: underline; text-underline-offset: 2px; }
 .item .sub { font-size: .6875rem; color: var(--ink-3); margin-top: 1px; }
 .item .o { font-size: .8125rem; }
+/* Primeira coluna da linha: a caixa do lote, quando há lote, e a identificação. */
+.item .ident { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
+.item .lotechk { width: 16px; height: 16px; margin-top: 2px; flex: none; accent-color: var(--brand-2); cursor: pointer; }
 /* Com o botão de próximo passo na linha, esta faixa pode ficar longa: ela quebra em vez de
    empurrar a página para o lado. Fila que rola na horizontal no celular não se usa. */
 .item .st { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; min-width: 0; }
@@ -249,6 +271,40 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
 /* ---------------------------------------------------------------- a linha que abre no lugar */
 /* A borda passa do .item para o invólucro: aberta, a linha e o seu detalhe são UM bloco, e um fio
    entre os dois sugeriria que o detalhe pertence à linha seguinte. */
+/* Editor dos modelos de recado, em Configurações: o campo e, embaixo, como ele fica preenchido. */
+.modelo { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.modelo:last-of-type { border-bottom: 0; }
+.modelo label { display: block; margin-bottom: 6px; font-size: .8125rem; }
+.modelo textarea { width: 100%; font-size: .8125rem; resize: vertical; }
+.modelo .previa {
+  margin: 7px 0 0; padding: 7px 10px; border-left: 2px solid var(--brand-2);
+  background: var(--surface-2); border-radius: 0 var(--r) var(--r) 0;
+}
+
+/* Frases rápidas embaixo de um campo de texto: o que a equipe escreve todos os dias, como botão. */
+.rapidas { display: flex; flex-wrap: wrap; gap: 6px; margin: 7px 0 0; }
+.chip {
+  font: inherit; font-size: .75rem; padding: 3px 9px; cursor: pointer;
+  border: 1px solid var(--line-2); border-radius: 999px;
+  background: var(--surface-2); color: var(--ink-2);
+}
+.chip:hover { border-color: var(--brand-2); color: var(--ink); }
+.chip:focus-visible { outline: 2px solid var(--brand-2); outline-offset: 1px; }
+
+/* Barra do trabalho em lote. Fica ENTRE o filtro e a lista, porque é sobre a lista que ela age:
+   o que está filtrado fora não entra no lote, e a barra precisa estar onde isso é óbvio. */
+.lote {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin: 0 0 10px; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: var(--r-2);
+  background: var(--surface-2);
+}
+.lote .row { gap: 10px; align-items: center; }
+.lote .bipe {
+  width: 300px; max-width: 46vw; padding: 5px 9px; font-family: var(--font-mono); font-size: .75rem;
+  border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); color: var(--ink);
+}
+.lote .bipe:focus-visible { outline: 2px solid var(--brand-2); outline-offset: 1px; }
+
 .itemwrap { border-bottom: 1px solid var(--line); }
 .itemwrap:last-child { border-bottom: 0; }
 .itemwrap .item { border-bottom: 0; }
@@ -285,10 +341,14 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
 /* ---------------------------------------------------------------- filtro rápido da fila */
 .qfind { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .qfind input { height: 28px; font-size: .8125rem; max-width: 300px; }
-.qfind .kbd {
+/* A tecla escrita onde ela age: atalho que ninguém descobre não existe. Serve tanto no filtro da
+   fila quanto dentro de um botão ("Pedido de receita  N"). */
+.kbd {
   font-family: var(--font-mono); font-size: .625rem; color: var(--ink-3);
   padding: 1px 5px; border: 1px solid var(--line-2); border-radius: var(--r); white-space: nowrap;
 }
+.btn .kbd { margin-left: 7px; opacity: .75; }
+.btn.primary .kbd { color: var(--on-brand); border-color: color-mix(in oklab, var(--on-brand) 45%, transparent); }
 .qfind .cnt { font-size: .6875rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* ---------------------------------------------------------------- detalhe em duas colunas */

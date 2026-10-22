@@ -15,7 +15,7 @@
 import * as F from '../fluxo.js';
 import { listar, configAtual, pacientePor, nomeDe } from '../dados.js';
 import { situacao, atrasadas, explicar } from '../prazos.js';
-import { dadosDasFilas, filasDoPapel, repartir } from '../filas.js';
+import { dadosDasFilas, filasDoPapel, repartir, proximoCaso } from '../filas.js';
 import {
   start, h, run, pageHead, badge, stat, stats, rowbar, nota, icon, desde, corEtapa, horasNa,
   linhaExpansivel, peekCampo, fmtDate,
@@ -105,7 +105,19 @@ async function telaDeEquipe(ctx, view, { abertas, metas, pronts }) {
   const abertos = new Set();
   const linha = (s) => itemCaso(s, metas, ctx, abertos, pronts);
   const D = await dadosDasFilas();
-  const partes = filasDoPapel(papel, D).map((f) => repartir(f, ctx.ator));
+  const partes = filasDoPapel(papel, D).map((f) => repartir(f, ctx.ator, papel));
+
+  function botaoProximoCaso() {
+    const alvo = proximoCaso(papel, ctx.ator, D, metas);
+    if (!alvo) return null;
+    const sit = situacao(alvo, metas);
+    return h('a', {
+      class: 'btn primary',
+      href: ROOT + `solicitacoes/detalhe.html?id=${alvo.id}`,
+      title: `#${alvo.protocolo} — ${F.proximaAcao(alvo).texto}`,
+    }, icon('arrow'), `Próximo caso · #${alvo.protocolo}`,
+    sit.estado === 'atrasada' ? badge('atrasado', 'crit') : null);
+  }
 
   const quanto = (f) => f.livres.length + f.custodia.length;
   const meus = [...new Map(partes.flatMap((f) => f.meus).map((s) => [s.id, s])).values()];
@@ -150,7 +162,10 @@ async function telaDeEquipe(ctx, view, { abertas, metas, pronts }) {
   // ela espremia até quebrar uma palavra por linha e as etiquetas vazavam o painel. Barra com
   // rótulo, ao contrário, lê bem em qualquer largura — então quem vai para a lateral é ela.
   view.append(
-    pageHead(PAPEIS[papel], `Olá, ${ctx.nome.split(' ')[0]}`, PAPEL_RESUMO[papel]),
+    // "Próximo caso" na tela em que a pessoa ENTRA: para quem atende em série, abrir o sistema e
+    // já estar no caso certo é o caminho mais curto possível entre chegar e trabalhar. Qual é o
+    // "certo" está em js/filas.js — atraso primeiro, depois prioridade, depois o mais parado.
+    pageHead(PAPEIS[papel], `Olá, ${ctx.nome.split(' ')[0]}`, PAPEL_RESUMO[papel], botaoProximoCaso()),
     indicadores.length ? stats(indicadores) : null,
     h('div', { class: 'det' },
       h('div', { class: 'main' }, suaVez, minhaFila),

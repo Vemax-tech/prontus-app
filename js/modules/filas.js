@@ -21,12 +21,15 @@
 // de movimentação, não por posse de caso, e misturar os dois eixos é exatamente o que o resto do
 // sistema evita. Esses itens ficam sempre na Fila atual, como trabalho da equipe.
 import * as F from '../fluxo.js';
-import { pacientePor, assumirSolicitacao, liberarSolicitacao, moverSolicitacao, nomeDe, configAtual } from '../dados.js';
+import {
+  pacientePor, assumirSolicitacao, liberarSolicitacao, moverSolicitacao, moverProntuario,
+  nomeDe, configAtual,
+} from '../dados.js';
 import { situacao, explicar } from '../prazos.js';
 import { vigiarNovidades, faixaDeNovidades } from '../atualiza.js';
-import { dadosDasFilas, filasDoPapel, repartir } from '../filas.js';
+import { dadosDasFilas, filasDoPapel, repartir, proximoCaso } from '../filas.js';
 import {
-  start, h, run, pageHead, empty, badge, icon, desde, corEtapa, confirmDlg,
+  start, h, run, pageHead, empty, badge, icon, desde, corEtapa, confirmDlg, modal, toast,
   botaoOcupado, linhaExpansivel, peekCampo, fmtDate,
 } from '../ui.js';
 import { PAPEIS } from '../permissoes.js';
@@ -63,8 +66,115 @@ export function telaDeFilas(modo) {
   const abertos = new Set();
   let busca = '';
 
+  // ---------------------------------------------------------------- trabalho em lote
+  //
+  // O ARQUIVO NÃO TRABALHA UM A UM. Quem vai à estante volta com doze pastas de uma vez; o
+  // sistema obrigava doze idas à tela — abrir o caso, registrar, voltar, procurar o próximo. A
+  // fila JÁ É a lista das doze: marcar e aplicar de uma vez é o gesto que já acontece no mundo.
+  //
+  // O lote só aparece quando TODOS os itens visíveis têm O MESMO próximo passo. Lote de passos
+  // diferentes é exatamente como alguém registraria "entregue" numa pasta que nem foi localizada
+  // — e a regra que impede isso não pode depender de a pessoa reparar.
+  const selecionados = new Set();
+  let loteAtual = null;
+  let mostradosAgora = [];
+
+  const passoEmLote = (mostrados) => {
+    // Linha sem passo nenhum não atrapalha o lote: ela simplesmente não entra. O que impede o
+    // lote é haver DOIS passos diferentes à vista, ou um passo que peça formulário — ninguém
+    // transcreve dez retornos do médico de uma vez.
+    const passos = mostrados.map(passoDaLinha).filter(Boolean);
+    if (passos.length < 2 || passos.some((p) => p.tipo === 'form')) return null;
+    return passos.every((p) => p.chave === passos[0].chave) ? passos[0] : null;
+  };
+
+  /** Os itens à vista a que o lote se aplica — os outros ficam na lista, sem caixa de seleção. */
+  const elegiveis = (mostrados) => (loteAtual
+    ? mostrados.filter((it) => passoDaLinha(it)?.chave === loteAtual.chave) : []);
+
+  /**
+   * O CAMPO DO LEITOR DE CÓDIGO DE BARRAS.
+   *
+   * Não há integração nenhuma a fazer: um leitor USB é um teclado que digita muito rápido e
+   * aperta Enter no fim. Toda a "integração" é este campo focado e a busca pelo código. Quem tem
+   * leitor bipa a etiqueta de cada pasta que separou; quem não tem digita o código. O resultado é
+   * o mesmo: a linha certa marcada, sem procurar na lista.
+   */
+  const campoBipe = h('input', {
+    type: 'search', class: 'bipe', placeholder: 'Bipar ou digitar o código da pasta…',
+    'aria-label': 'Código do prontuário — funciona com leitor de código de barras',
+    onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); bipar(e.currentTarget); } },
+  });
+
+  function bipar(el) {
+    const codigo = el.value.trim();
+    if (!codigo) return;
+    el.value = '';
+    const achado = mostradosAgora.find((it) => {
+      const pront = it.codigo ? it : D.pronts.find((p) => p.id === it.prontuario_id);
+      return pront?.codigo?.toLowerCase() === codigo.toLowerCase() || String(it.protocolo) === codigo;
+    });
+    if (!achado) { toast(`"${codigo}" não está nesta fila. Confira o código, ou a fila à esquerda.`, true); return; }
+    selecionados.add(achado.id);
+    pintarLista();
+    el.focus();                                     // a próxima pasta já vem; o cursor fica onde está
+    toast(`${codigo} marcado — ${selecionados.size} na seleção.`);
+  }
+
+  /**
+   * Aplica o passo a cada selecionado, UM A UM e na ordem. Não existe "tudo ou nada" aqui: o
+   * servidor valida cada registro isoladamente, e o que falhar não pode desfazer o que já deu
+   * certo. O que não passou é listado com o motivo, caso a caso — um lote que falha em silêncio
+   * é pior que nenhum lote.
+   */
+  async function aplicarEmLote(passo, itens) {
+    const falhas = [];
+    let feitos = 0;
+    for (const it of itens) {
+      const { error } = await executarPasso(it, passo);
+      if (error) falhas.push(`#${it.protocolo}: ${error.message}`); else feitos += 1;
+    }
+    if (falhas.length) {
+      modal('O lote passou só em parte', h('div', {},
+        h('p', {}, `${feitos} de ${itens.length} registrados. Estes não passaram:`),
+        h('ul', { class: 'ul-list', style: 'margin:12px 0' }, falhas.map((f) => h('li', {}, f))),
+        h('p', { class: 'small muted' }, 'O que passou está salvo. Os de cima continuam na fila.')),
+      (close) => h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => { close(); location.reload(); } }, 'Entendi')));
+      return;
+    }
+    toast(`${feitos} ${feitos === 1 ? 'registro feito' : 'registros feitos'} de uma vez.`);
+    location.reload();
+  }
+
+  const barraLote = h('div', { class: 'lote', hidden: '' });
+
+  function pintarLote(mostrados) {
+    barraLote.hidden = !loteAtual;
+    if (!loteAtual) return;
+    const aplicaveis = elegiveis(mostrados);
+    const marcados = aplicaveis.filter((it) => selecionados.has(it.id));
+    const todos = marcados.length === aplicaveis.length;
+    barraLote.replaceChildren(
+      h('div', { class: 'row' },
+        h('button', {
+          class: 'linkbtn', type: 'button',
+          onclick: () => {
+            aplicaveis.forEach((it) => (todos ? selecionados.delete(it.id) : selecionados.add(it.id)));
+            pintarLista();
+          },
+        }, todos ? 'Desmarcar todos' : `Marcar os ${aplicaveis.length}`),
+        campoBipe),
+      h('div', { class: 'row' },
+        h('span', { class: 'micro muted' }, marcados.length
+          ? `${marcados.length} de ${aplicaveis.length} selecionado${marcados.length > 1 ? 's' : ''}`
+          : 'Marque as linhas, ou bipe o código de cada pasta que você separou.'),
+        botaoOcupado(`${loteAtual.rotulo} · ${marcados.length}`,
+          () => aplicarEmLote(loteAtual, marcados),
+          { class: 'btn sm primary', disabled: marcados.length ? null : '' })));
+  }
+
   // Cada fila repartida conforme a tela: aqui mostramos o que é livre, lá o que é meu.
-  const partes = filasDoPapel(papel, D).map((f) => repartir(f, ctx.ator));
+  const partes = filasDoPapel(papel, D).map((f) => repartir(f, ctx.ator, papel));
   const filas = partes.map((f) => (meu
     ? { ...f, itens: f.meus, assumidos: [], custodia: [] }
     : { ...f, itens: f.livres }));
@@ -110,14 +220,63 @@ export function telaDeFilas(modo) {
    * nunca executa pela metade: ou faz o passo inteiro, ou entrega quem clicou no lugar de fazê-lo.
    */
   function proximoPasso(it) {
-    if (!F.aberta(it)) return null;
-    // `principal` marca o caminho normal do processo em js/fluxo.js. A etapa "Aberta", por
-    // exemplo, aceita classificar numa triagem OU pedir o prontuário — duas saídas legítimas,
-    // mas só uma é o que acontece sempre. As outras aparecem ao abrir a linha, onde há espaço
-    // para explicar o que cada uma faz.
-    const t = F.transicoesDe(it, ctx.papeis).find((x) => x.principal);
-    return t ? botaoDeTransicao(it, t) : null;
+    const p = passoDaLinha(it);
+    if (!p) return null;
+    if (p.tipo === 'form') return botaoDeTransicao(it, p.t);
+    return botaoOcupado(p.rotulo, () => agir(executarPasso(it, p), `#${it.protocolo}: ${p.rotulo.toLowerCase()}.`),
+      { class: 'btn sm' });
   }
+
+  /**
+   * QUAL É, DE VERDADE, O PRÓXIMO PASSO DESTA LINHA — nos dois eixos.
+   *
+   * `principal` marca o caminho normal do processo em js/fluxo.js. A etapa "Aberta", por exemplo,
+   * aceita classificar numa triagem OU pedir o prontuário — duas saídas legítimas, mas só uma é o
+   * que acontece sempre; as outras aparecem ao abrir a linha, onde há espaço para explicá-las.
+   *
+   * Só que a etapa da solicitação não é a história inteira. Para o ARQUIVO, o passo quase sempre
+   * é um registro de custódia (localizou, retirou), e a transição da solicitação só vem no fim.
+   * Oferecer "Entregar à Recepção" a uma pasta que ninguém achou ainda é oferecer um botão que o
+   * sistema vai recusar — e o botão recusado é o que ensina a equipe a desconfiar da tela.
+   */
+  function passoDaLinha(it) {
+    if (!it.protocolo || !F.aberta(it)) return null;
+    const t = F.transicoesDe(it, ctx.papeis).find((x) => x.principal);
+    const mov = custodiaQueFalta(it, t);
+    if (mov === 'nada') return null;
+    if (mov) return { tipo: 'mov', chave: 'mov:' + mov.mov, rotulo: mov.rotulo, mov };
+    if (!t) return null;
+    const pedeFormulario = t.exigeComunicacao || t.exigeMotivo || t.exigeConferencia || t.exigeMedico
+      || ['T07', 'T08', 'T12', 'T14'].includes(t.id) || t.para === 'concluida';
+    return { tipo: pedeFormulario ? 'form' : 'trans', chave: 't:' + t.id, rotulo: t.rotulo, t };
+  }
+
+  /**
+   * O eixo da PASTA, quando o passo da solicitação depende dele.
+   *
+   * Três respostas possíveis, e as três importam:
+   *   · `{ mov }`  — falta um registro de custódia antes (localizar antes de retirar);
+   *   · `null`     — a pasta está em dia, ou o próprio passo já a leva junto (js/dados.js);
+   *   · `'nada'`   — a pasta está num lugar de onde este papel não a move. Aí o passo da
+   *                  solicitação também não vai passar, e oferecer o botão seria oferecer uma
+   *                  recusa. Acontece, por exemplo, quando duas solicitações abertas disputam o
+   *                  mesmo prontuário: raro, mas o botão que sempre falha é o que ensina a
+   *                  equipe a desconfiar da tela inteira.
+   */
+  function custodiaQueFalta(it, t) {
+    if (!t?.viaProntuario) return null;
+    const pront = D.pronts.find((p) => p.id === it.prontuario_id);
+    if (!pront) return null;
+    const feitos = D.movimentos.filter((m) => m.solicitacao_id === it.id).map((m) => m.tipo);
+    if (feitos.includes(t.viaProntuario)) return null;
+    const possiveis = F.movimentosDe(pront, ctx.papeis, feitos);
+    if (possiveis.some((m) => m.mov === t.viaProntuario)) return null;
+    return possiveis[0] || 'nada';
+  }
+
+  const executarPasso = (it, p) => (p.tipo === 'mov'
+    ? moverProntuario({ prontuario_id: it.prontuario_id, mov: p.mov.mov, papeis: ctx.papeis, ator: ctx.ator, solicitacao_id: it.id })
+    : moverSolicitacao({ id: it.id, transicao: p.t.id, papeis: ctx.papeis, ator: ctx.ator }));
 
   /**
    * Um passo do fluxo como botão. Quando o passo precisa de informação, ele NÃO vira um botão que
@@ -203,10 +362,26 @@ export function telaDeFilas(modo) {
       // precisa aparecer: é a tela que a equipe deixa aberta.
       const sit = situacao(it, metas);
       const dono = it.assumido_por;
+      const pront = D.pronts.find((p) => p.id === it.prontuario_id);
       return h('div', { class: 'item' + (sit.estado === 'atrasada' ? ' late' : '') },
-        h('div', {},
-          h('a', { class: 'id', href: ROOT + `solicitacoes/detalhe.html?id=${it.id}` }, '#' + it.protocolo),
-          h('div', { class: 'sub' }, F.TIPO_CURTO[it.tipo], verPac && pac ? ' · ' + pac.nome : '')),
+        h('div', { class: 'ident' },
+          loteAtual && passoDaLinha(it)?.chave === loteAtual.chave ? h('input', {
+            type: 'checkbox', class: 'lotechk',
+            'aria-label': `Incluir o caso #${it.protocolo} no lote`,
+            checked: selecionados.has(it.id) ? '' : null,
+            onclick: (e) => {
+              e.stopPropagation();
+              if (e.currentTarget.checked) selecionados.add(it.id); else selecionados.delete(it.id);
+              pintarLote(mostradosAgora);
+            },
+          }) : null,
+          h('span', {},
+            h('a', { class: 'id', href: ROOT + `solicitacoes/detalhe.html?id=${it.id}` }, '#' + it.protocolo),
+            // O código da pasta na própria linha: é por ele que o Arquivo procura na estante, e
+            // é ele que o leitor de código de barras devolve.
+            h('div', { class: 'sub' }, F.TIPO_CURTO[it.tipo],
+              pront ? h('span', { class: 'mono' }, ' · ' + pront.codigo) : null,
+              verPac && pac ? ' · ' + pac.nome : ''))),
         h('div', { class: 'o' }, F.proximaAcao(it).texto,
           dono && dono !== ctx.ator ? h('div', { class: 'micro muted' }, 'com ' + nomeDe(dono)) : null,
           sit.rotulo ? h('div', { class: 'micro muted' }, explicar(it, metas)) : null),
@@ -305,6 +480,7 @@ export function telaDeFilas(modo) {
         itensDaVez().length
           ? h('div', { class: 'qfind' }, campoBusca, h('span', { class: 'kbd' }, '/'), contagemBusca)
           : null,
+        barraLote,
         listaEl),
       // O que já tem dono não some: fica a um clique, para a coordenação ver o quadro inteiro
       // sem que o número da fila passe a contar trabalho que já é de alguém.
@@ -329,6 +505,11 @@ export function telaDeFilas(modo) {
   function pintarLista() {
     const todos = itensDaVez();
     const mostrados = todos.filter(passaNoFiltro);
+    mostradosAgora = mostrados;
+    loteAtual = passoEmLote(mostrados);
+    // Seleção vale só para o que está à vista: filtrar e depois aplicar a um item escondido é o
+    // jeito mais fácil de um lote registrar o que ninguém mandou.
+    [...selecionados].forEach((id) => { if (!mostrados.some((it) => it.id === id)) selecionados.delete(id); });
     contagemBusca.textContent = busca ? `${mostrados.length} de ${todos.length}` : '';
     listaEl.replaceChildren(mostrados.length
       ? mostrados.map(linha)
@@ -337,6 +518,7 @@ export function telaDeFilas(modo) {
         : meu
           ? 'Nada seu nesta fila. O que a equipe ainda não pegou está em "Fila atual".'
           : 'Nada livre nesta fila agora. As outras filas do seu papel estão à esquerda.'));
+    pintarLote(mostrados);
   }
 
   const sub = meu
@@ -349,8 +531,27 @@ export function telaDeFilas(modo) {
         ? `Nada solto: os ${assumidosNoTotal} itens do seu papel já têm dono.`
         : 'Nada pendente para o seu papel agora.');
 
+  /**
+   * "PRÓXIMO CASO" — um clique no lugar de ler a fila inteira.
+   *
+   * Quem atende em série não quer escolher, quer o próximo. Escolher custa percorrer a lista, e
+   * percorrê-la várias vezes por hora é como o caso urgente fica para trás enquanto alguém
+   * resolve três fáceis. A ordem está em js/filas.js, onde dá para discuti-la e testá-la.
+   */
+  function botaoProximoCaso() {
+    const alvo = proximoCaso(papel, ctx.ator, D, metas);
+    if (!alvo) return null;
+    const sit = situacao(alvo, metas);
+    return h('a', {
+      class: 'btn primary',
+      href: ROOT + `solicitacoes/detalhe.html?id=${alvo.id}`,
+      title: `#${alvo.protocolo} — ${F.proximaAcao(alvo).texto}`,
+    }, icon('arrow'), `Próximo caso · #${alvo.protocolo}`,
+    sit.estado === 'atrasada' ? badge('atrasado', 'crit') : null);
+  }
+
   view.append(
-    pageHead(PAPEIS[papel], titulo, sub),
+    pageHead(PAPEIS[papel], titulo, sub, botaoProximoCaso()),
     novidades.el,
     !filas.length
       ? empty('Este papel não tem fila: ele acompanha o trabalho em vez de executá-lo. A visão dele é a Visão geral, a lista de solicitações e os relatórios.')

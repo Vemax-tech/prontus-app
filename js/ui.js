@@ -4,15 +4,18 @@
 // e entrega às telas um contexto (ctx) com quem é o usuário e o que ele pode. As peças de interface
 // genéricas vêm de ./base/ (sem conhecimento de domínio); o que é identidade do Prontus está aqui
 // e no CSS de css/.
-import { criarIcon, criarRun, empty as emptyBase, h, toast } from './base/dom.js';
+import { copyText, criarIcon, criarRun, empty as emptyBase, h, toast } from './base/dom.js';
 import { papelAtual, definirPapel, papeisAtuais, atorAtual, PAPEIS } from './papel.js';
 import { pode, podeCompleto, PAPEL_RESUMO } from './permissoes.js';
-import { nomeDe, usuarioPor, reiniciar, avisosDoPapel, marcarAvisosLidos } from './dados.js';
+import { nomeDe, usuarioPor, reiniciar, avisosDoPapel, marcarAvisosLidos, escalonarAtrasos } from './dados.js';
+import * as Navegador from './avisos-navegador.js';
 import { dadosDasFilas, contarFilas } from './filas.js';
 import { temaAtual, alternarTema, TEMAS } from './tema.js';
 import { MARCA, MONOGRAMA } from './marca.js';
+import { linkWhatsApp } from './mensagens.js';
 
 export { instalarDom, h, fmtDate, linkSeguro, toast, copyText, modal, confirmDlg, formModal, tabs, qs, botaoOcupado } from './base/dom.js';
+export { montar as montarMensagem, primeiroNome } from './mensagens.js';
 export { dataTable, filtros, contem, baixarCsv } from './base/tabela.js';
 
 const ROOT = new URL('../', import.meta.url).href;
@@ -132,6 +135,33 @@ export const barra = (n, max, tipo = '') => h('div', { class: 'bar' + (tipo ? ' 
 export const rowbar = (rotulo, n, max, { tipo = '', valor } = {}) => h('div', { class: 'rowbar' },
   h('span', {}, rotulo), barra(n, max, tipo), h('b', {}, valor ?? String(n)));
 
+/**
+ * A BARRA DO RECADO PRONTO — copiar, ou abrir o WhatsApp com o texto já escrito.
+ *
+ * Vai dentro do formulário que REGISTRA a comunicação, nunca solta numa tela. A ordem importa e é
+ * a do processo real: o sistema escreve o recado, a pessoa confere e ajusta, abre o WhatsApp e
+ * publica, volta e confirma — e é a confirmação que grava. Abrir o aplicativo não registra nada,
+ * e a tela diz isso em letras para ninguém achar que registrou.
+ *
+ * O endereço é recalculado a cada tecla digitada no formulário: um link que ficasse com o texto
+ * original levaria a mensagem errada justamente de quem teve o cuidado de corrigi-la.
+ */
+export function recadoPronto(form, lerTexto, { telefone = null, nota: aviso } = {}) {
+  const abrir = h('a', {
+    class: 'btn sm', target: '_blank', rel: 'noopener noreferrer',
+    title: telefone ? 'Abre a conversa com o paciente, com o texto pronto' : 'Abre o WhatsApp com o texto pronto; o grupo você escolhe lá',
+  }, 'Abrir no WhatsApp');
+  const sincronizar = () => abrir.setAttribute('href', linkWhatsApp(lerTexto(), telefone));
+  sincronizar();
+  form.addEventListener('input', sincronizar);
+  return h('div', { class: 'recado' },
+    h('div', { class: 'row' },
+      h('button', { class: 'btn sm', type: 'button', onclick: () => copyText(lerTexto()) }, icon('copy'), 'Copiar o texto'),
+      abrir),
+    h('p', { class: 'micro muted' }, aviso
+      || 'O sistema não envia nada: ele escreve o texto e abre o aplicativo. Quem publica é você — e o que registra é este formulário, ao confirmar.'));
+}
+
 /** Observação em texto, com barra lateral. `tipo`: '' | 'warn' | 'info'. */
 export const nota = (tipo, ...kids) => h('p', { class: 'note' + (tipo ? ' ' + tipo : '') }, kids);
 
@@ -202,6 +232,36 @@ function botaoTema() {
  * do próprio fluxo, tem destinatário (o papel) e tem não-lido — coisas que uma mensagem solta num
  * grupo nunca teve. Abre uma lista, cada linha leva ao caso, e abrir a lista marca como lido.
  */
+/**
+ * O INTERRUPTOR DO AVISO DO SISTEMA — a notificação que aparece por cima de tudo.
+ *
+ * Mora DENTRO do sininho de propósito. É ali que a pessoa está pensando em avisos, e é o único
+ * lugar em que pedir permissão ao navegador faz sentido: um pedido que salta sozinho ao abrir a
+ * página é negado por reflexo, e uma negativa dessas não se desfaz — o navegador não deixa
+ * perguntar de novo.
+ */
+function interruptorDeNotificacao() {
+  const linha = h('div', { class: 'af' });
+  const pintar = () => {
+    const e = Navegador.estado();
+    const texto = {
+      indisponivel: 'Este navegador não avisa fora da aba. O número no título da aba continua valendo.',
+      negado: 'Você bloqueou os avisos deste site no navegador. Para voltar atrás, é no cadeado da barra de endereço.',
+      desligado: 'Quer ser avisado mesmo com a aba em segundo plano?',
+      ligado: 'Avisando nesta máquina, mesmo com a aba em segundo plano.',
+    }[e];
+    linha.replaceChildren(
+      h('p', { class: 'micro muted' }, texto),
+      e === 'desligado'
+        ? h('button', { class: 'btn sm', type: 'button', onclick: async () => { await Navegador.ligar(); pintar(); } }, 'Avisar nesta máquina')
+        : e === 'ligado'
+          ? h('button', { class: 'linkbtn', type: 'button', onclick: () => { Navegador.desligar(); pintar(); } }, 'Desligar')
+          : null);
+  };
+  pintar();
+  return linha;
+}
+
 function sinoDeAvisos(ctx) {
   const papel = ctx.papeis[0];
   const lista = h('div', { class: 'avisos', hidden: '' });
@@ -232,7 +292,8 @@ function sinoDeAvisos(ctx) {
             h('b', {}, '#' + a.protocolo), ' ', a.texto,
             h('div', { class: 'micro muted' }, desde(a.criado_em))))))
         : h('p', { class: 'small muted', style: 'padding:10px 12px' },
-          'Nada aqui. Os avisos aparecem sozinhos quando um caso entra na fila do seu papel.'));
+          'Nada aqui. Os avisos aparecem sozinhos quando um caso entra na fila do seu papel.'),
+      interruptorDeNotificacao());
     lista.hidden = false;
     b.setAttribute('aria-expanded', 'true');
     // Abrir é ler: o sininho existe para zerar, não para acumular culpa.
@@ -241,7 +302,9 @@ function sinoDeAvisos(ctx) {
   }
 
   contar();
-  return h('div', { class: 'sino' }, botao, lista);
+  // `atualizar` é o que o relógio da casca chama: o número do sininho muda sozinho, sem a pessoa
+  // precisar recarregar nem abrir a lista.
+  return { el: h('div', { class: 'sino' }, botao, lista), atualizar: contar };
 }
 
 function quemSouEu() {
@@ -279,9 +342,22 @@ export async function start(key, title, render) {
   // se sobrepõem: dois números diferentes sob o mesmo rótulo, e nenhum explicava o outro.
   const contagem = { 'filas/': 0, 'minhafila/': 0 };
   try {
+    // Antes de contar, o prazo cobra: o que estourou a meta vira aviso de verdade (js/dados.js).
+    escalonarAtrasos();
     const { atual, minha } = contarFilas(papeis[0], ator, await dadosDasFilas());
     contagem['filas/'] = atual; contagem['minhafila/'] = minha;
   } catch { /* fila sem número é melhor que tela sem casca */ }
+
+  // As pílulas do menu ficam guardadas para o relógio da casca poder atualizá-las sem redesenhar
+  // a navegação: trocar a barra de lugar enquanto alguém está clicando nela é como um sistema
+  // rouba o próprio clique.
+  const pilulas = {};
+  const pilulaDoMenu = (p) => {
+    if (!(p in contagem)) return null;
+    const el = h('span', { class: 'pill', hidden: contagem[p] ? null : '' }, String(contagem[p] || ''));
+    pilulas[p] = el;
+    return el;
+  };
 
   const mod = NAV.find((n) => n[0] === key);
   const visiveis = NAV.filter((n) => !n[3] || ctx.pode(n[3]));
@@ -289,7 +365,7 @@ export async function start(key, title, render) {
     visiveis.map(([p, rot, ic, , sep]) => [
       sep && h('span', { class: 'navsep', 'aria-hidden': 'true' }),
       h('a', { class: 'navi' + (p === key ? ' on' : ''), href: ROOT + p, 'aria-current': p === key ? 'page' : null },
-        icon(ic), rot, contagem[p] ? h('span', { class: 'pill' }, String(contagem[p])) : null),
+        icon(ic), rot, pilulaDoMenu(p)),
     ]));
   const burger = h('button', {
     class: 'burger', 'aria-label': 'Abrir navegação', 'aria-expanded': 'false', 'aria-controls': 'nav',
@@ -297,17 +373,19 @@ export async function start(key, title, render) {
   }, icon('menu'));
 
   const view = h('main', { class: 'wrap', id: 'view' });
+  const sino = sinoDeAvisos(ctx);
   app.replaceChildren(
     h('div', { class: 'topwrap' },
       h('header', { class: 'top' }, burger, assinatura(), nav, h('div', { class: 'tools' },
-        sinoDeAvisos(ctx),
+        sino.el,
         ctx.pode('configuracoes')
           ? h('a', { class: 'btn icon' + (key === 'configuracoes/' ? ' on' : ''), href: ROOT + 'configuracoes/', 'aria-label': 'Configurações da clínica', title: 'Configurações da clínica' }, icon('engrenagem'))
           : null,
         botaoTema(), quemSouEu())),
       faixaDemo()),
     view);
-  document.title = `${title} — ${MARCA.produto}`;
+  Navegador.definirTitulo(`${title} — ${MARCA.produto}`);
+  vigiarTrabalho(ctx, { pilulas, sino });
 
   if (mod && mod[3] && !ctx.pode(mod[3])) {
     view.replaceChildren(h('div', { class: 'empty' },
@@ -322,6 +400,72 @@ export async function start(key, title, render) {
     console.error(e);
     view.replaceChildren(h('div', { class: 'empty' }, h('p', {}, 'Não foi possível carregar esta página. Recarregue; se continuar, avise o suporte.')));
   }
+}
+
+// ---------------------------------------------------------------- o relógio da casca
+//
+// A tela de fila já vigiava a própria lista (js/atualiza.js). Isto aqui vigia o TRABALHO, de
+// qualquer tela do sistema: enquanto alguém estiver com o Prontus aberto — na visão geral, num
+// caso, no relatório —, o número do menu, o número do sininho, o título da aba e o ícone dela
+// continuam dizendo a verdade, e um caso que chega agora aparece sem ninguém apertar nada.
+//
+// É o que separa "o sistema responde quando eu entro nele" de "o sistema me chama". Sem isso, o
+// grupo do WhatsApp continua sendo o despertador da clínica.
+//
+// NÃO REDESENHA NADA: só troca números em nós que já existem. Redesenhar a barra enquanto alguém
+// clica nela é a forma mais fácil de um sistema roubar o próprio clique.
+const INTERVALO_CASCA = 12000;
+const CHAVE_ANUNCIADOS = 'prontus.avisos.anunciados';
+
+const anunciados = () => {
+  try { return new Set(JSON.parse(sessionStorage.getItem(CHAVE_ANUNCIADOS) || '[]')); } catch { return new Set(); }
+};
+const guardarAnunciados = (s) => {
+  try { sessionStorage.setItem(CHAVE_ANUNCIADOS, JSON.stringify([...s].slice(-200))); } catch { /* sem storage: avisa de novo, e paciência */ }
+};
+
+async function vigiarTrabalho(ctx, { pilulas, sino }) {
+  const papel = ctx.papeis[0];
+
+  const ciclo = async () => {
+    escalonarAtrasos();
+    let n = { atual: 0, minha: 0 };
+    try { n = contarFilas(papel, ctx.ator, await dadosDasFilas()); } catch { return; }
+
+    const porMenu = { 'filas/': n.atual, 'minhafila/': n.minha };
+    for (const [p, el] of Object.entries(pilulas)) {
+      el.textContent = String(porMenu[p] || '');
+      el.hidden = !porMenu[p];
+    }
+    const naoLidos = avisosDoPapel(papel, { somenteNaoLidos: true });
+    sino.atualizar();
+    Navegador.marcar(naoLidos.length);
+
+    // Só o que ainda não foi anunciado NESTA SESSÃO. A lista vive no sessionStorage, então
+    // navegar entre telas (que aqui é sempre uma recarga inteira) não vira um segundo aviso do
+    // mesmo caso — e fechar a aba zera, porque voltar amanhã merece ser avisado de novo.
+    const vistos = anunciados();
+    const novos = naoLidos.filter((a) => !vistos.has(a.id));
+    if (!novos.length) return;
+    novos.forEach((a) => vistos.add(a.id));
+    guardarAnunciados(vistos);
+    const um = novos.length === 1 ? novos[0] : null;
+    Navegador.notificar({
+      titulo: um ? `${MARCA.produto} — caso #${um.protocolo}` : `${MARCA.produto} — ${novos.length} casos para ${PAPEIS[papel]}`,
+      // NUNCA o nome do paciente nem o relato: a notificação aparece na tela de bloqueio e na
+      // frente de quem passar pelo balcão. O caso inteiro está a um clique.
+      corpo: um ? um.texto : 'Entraram na sua fila. Abra para ver quais.',
+      url: ROOT + (um ? `solicitacoes/detalhe.html?id=${um.solicitacao_id}` : 'filas/'),
+      tag: 'fila-' + papel,
+    });
+  };
+
+  await ciclo();
+  // O relógio é da JANELA, não do processo: assim ele morre junto com a página que o criou —
+  // inclusive no jsdom dos testes, onde não existe "fechar a aba" para disparar o pagehide.
+  const t = window.setInterval(() => { if (!document.hidden) ciclo(); }, INTERVALO_CASCA);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) ciclo(); });
+  window.addEventListener('pagehide', () => window.clearInterval(t), { once: true });
 }
 
 /** Cor da etapa pelo que ela significa: espera, pronto para seguir, ou encerrado. */

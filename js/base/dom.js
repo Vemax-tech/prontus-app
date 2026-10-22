@@ -135,16 +135,46 @@ export const confirmDlg = (msg) => new Promise((res) => {
  * fields: [{name,label,type:'text|textarea|select|number|url|email|date',options:[[v,l]],value,required,min,max,step,nullable,maxlength,hint,placeholder}]
  * validate(vals) -> mensagem de erro (string) ou vazio. onSubmit(vals) -> false mantém a janela aberta.
  */
-export function formModal({ title, fields, onSubmit, validate, onClose, submitLabel = 'Salvar' }) {
+export function formModal({ title, fields, onSubmit, validate, onClose, extras, submitLabel = 'Salvar' }) {
   const form = h('form', { novalidate: true });
   fields.forEach((f) => {
     const id = 'f_' + f.name; let inp;
     const common = { id, name: f.name, maxlength: f.maxlength, placeholder: f.placeholder, 'aria-describedby': f.hint ? id + '_h' : null };
+    let extra = null;
     if (f.type === 'textarea') inp = h('textarea', { ...common, value: f.value ?? '' });
     else if (f.type === 'select') inp = h('select', { id, name: f.name }, f.options.map(([v, l]) => h('option', { value: v, selected: String(v) === String(f.value ?? '') }, l)));
-    else inp = h('input', { ...common, type: f.type || 'text', value: f.value ?? '', min: f.min, max: f.max, step: f.step });
-    form.append(h('label', { for: id }, f.label + (f.required ? ' *' : '')), inp, f.hint && h('p', { class: 'small muted', id: id + '_h' }, f.hint));
+    else if (f.type === 'buscavel') {
+      // UM SELECT COM TRÊS MIL PACIENTES É UMA LISTA QUE NINGUÉM PERCORRE. O jeito de achar
+      // alguém é digitar o nome, e <input list> dá isso sem biblioteca nenhuma: o navegador
+      // filtra enquanto se digita, e quem prefere o mouse ainda abre a lista inteira pela seta.
+      // O valor digitado é o RÓTULO; o id volta a ser id na validação, logo abaixo.
+      extra = h('datalist', { id: id + '_dl' }, f.options.map(([, l]) => h('option', { value: l })));
+      const atual = f.options.find(([v]) => String(v) === String(f.value ?? ''));
+      inp = h('input', { ...common, type: 'text', list: id + '_dl', autocomplete: 'off', value: atual ? atual[1] : '' });
+    } else inp = h('input', { ...common, type: f.type || 'text', value: f.value ?? '', min: f.min, max: f.max, step: f.step });
+    form.append(h('label', { for: id }, f.label + (f.required ? ' *' : '')), inp, extra);
+    // FRASES RÁPIDAS: o que a equipe digita todo dia vira botão. Além de poupar a digitação,
+    // padroniza o texto — e texto padronizado é o que torna possível, depois, contar por que as
+    // pessoas ligam. Continua sendo um campo livre: o botão escreve, não decide.
+    if (f.chips) {
+      form.append(h('div', { class: 'rapidas' }, f.chips.map((c) => h('button', {
+        class: 'chip', type: 'button',
+        onclick: () => {
+          inp.value = inp.value.trim() ? inp.value.replace(/\s*$/, '') + ' ' + c : c;
+          inp.focus();
+          // O Event da JANELA do campo, não o global: no jsdom dos testes o global do Node é um
+          // Event diferente, e o dispatch recusa um evento que não é "dele".
+          const Ev = inp.ownerDocument?.defaultView?.Event || Event;
+          inp.dispatchEvent(new Ev('input', { bubbles: true }));
+        },
+      }, c))));
+    }
+    form.append(f.hint && h('p', { class: 'small muted', id: id + '_h' }, f.hint));
   });
+  // `extras` entra depois dos campos e recebe o próprio formulário mais um leitor dos valores
+  // ATUAIS. É assim que um "copiar" ou um "abrir no WhatsApp" leva o texto como a pessoa acabou
+  // de ajustá-lo, e não o texto com que o formulário nasceu.
+  if (extras) form.append(extras(form, (nome) => form.elements[nome]?.value ?? ''));
   const err = h('p', { class: 'err', role: 'alert', hidden: true });
   form.append(err);
   const fail = (msg, el) => { err.textContent = msg; err.hidden = false; el?.focus(); };
@@ -155,6 +185,12 @@ export function formModal({ title, fields, onSubmit, validate, onClose, submitLa
       for (const f of fields) {
         const el = form.elements[f.name]; let v = el.value.trim();
         if (f.required && !v) return fail(`Preencha: ${f.label}`, el);
+        if (f.type === 'buscavel') {
+          const achado = f.options.find(([, l]) => l.toLowerCase() === v.toLowerCase());
+          if (v && !achado) return fail(`Escolha um item da lista em: ${f.label}`, el);
+          v = achado ? String(achado[0]) : '';
+          if (f.required && !v) return fail(`Preencha: ${f.label}`, el);
+        }
         if (f.type === 'number') {
           v = v === '' ? null : Number(v);
           if (v != null && (!Number.isFinite(v) || (f.min != null && v < f.min) || (f.max != null && v > f.max))) return fail(`Valor inválido em: ${f.label}`, el);

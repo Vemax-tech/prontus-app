@@ -16,7 +16,8 @@
 // =====================================================================================
 import * as F from './fluxo.js';
 import { pode, PAPEIS } from './permissoes.js';
-import { METAS_PADRAO } from './prazos.js';
+import { METAS_PADRAO, situacao } from './prazos.js';
+import { MODELOS_PADRAO } from './mensagens.js';
 
 // Id sequencial, NÃO aleatório, e o contador vive dentro do db: cada tela é uma página própria,
 // com recarga completa, e o id impresso numa lista precisa continuar valendo na tela seguinte.
@@ -34,7 +35,7 @@ export const db = {
   empresa: { id: 'emp-1', nome: 'Clínica (demonstração)' },
   // Configuração da clínica. Em produção é uma tabela; aqui mora no mesmo db para ser salva,
   // restaurada e reiniciada junto com o resto da demonstração.
-  config: { metas: { ...METAS_PADRAO }, exigirArquivamentoParaConcluir: false, medicos: [] },
+  config: { metas: { ...METAS_PADRAO }, exigirArquivamentoParaConcluir: false, medicos: [], mensagens: { ...MODELOS_PADRAO } },
   usuarios: [], pacientes: [], prontuarios: [], movimentos: [],
   solicitacoes: [], tarefas: [], eventos: [],
   avaliacoes: [], documentos: [], comunicacoes: [], entregas: [], auditoria: [],
@@ -64,6 +65,9 @@ const MEDICOS_PADRAO = [
 ];
 export const medicosDaClinica = () => db.config.medicos.map((m) => ({ ...m }));
 
+/** Nome da clínica, para os recados que o sistema escreve. Em produção vem da empresa logada. */
+export const nomeDaClinica = () => db.empresa.nome;
+
 export const usuarioPor = (id) => db.usuarios.find((u) => u.id === id);
 export const nomeDe = (id) => usuarioPor(id)?.nome || '—';
 /** Só gente ativa: um usuário desativado não recebe trabalho novo, mas continua no histórico. */
@@ -88,6 +92,8 @@ const PACIENTES = [
   ['Waldemar Pinto', '1942-07-19', '(11) 98100-0015'],
   ['Zilda Monteiro', '1957-11-30', '(11) 98100-0016'],
   ['Hermínio Dantas', '1944-09-05', '(11) 98100-0017'],
+  ['Ruth Vasconcelos', '1954-05-02', '(11) 98100-0018'],
+  ['Ariovaldo Nunes', '1947-01-23', '(11) 98100-0019'],
 ];
 // Um paciente tem UM prontuário. Dois atendimentos abertos do mesmo paciente disputariam a mesma
 // custódia, o que a própria regra RN-08 proíbe — então só reaproveitamos um paciente quando o
@@ -294,11 +300,21 @@ const ROTEIRO = [
   // Fluxo 1 esperando o Call Center retornar ao paciente: é o caso em que a conclusão depende
   // de contato efetivo, e nenhuma tentativa frustrada basta (RN-06 + RN-12).
   { tipo: 'duvida_correcao', ate: 'avisado_grupo', pac: 16, horas: 28, assumido: false, relato: 'Quer confirmar se a dose da manhã mudou depois da última consulta.', devolucao: 'recebido' },
+  // VÁRIOS PEDIDOS ESPERANDO O ARQUIVO AO MESMO TEMPO. É o cenário real do setor: quem vai à
+  // estante vai uma vez e volta com um monte de pastas. Com um pedido só na fila, o trabalho em
+  // lote não aparece na tela — e a demonstração mostraria um sistema mais manual do que ele é.
+  { tipo: 'pedido_receita', ate: 'pedido_arquivo', pac: 17, horas: 2, assumido: false, relato: 'Pede renovação da receita de pressão; acabou ontem.' },
+  { tipo: 'duvida_correcao', ate: 'pedido_arquivo', pac: 18, horas: 5, assumido: false, relato: 'Quer confirmar se a dose mudou depois da internação.' },
 ];
 
 export function semear() {
   db.seq = 0;
-  db.config = { metas: { ...METAS_PADRAO }, exigirArquivamentoParaConcluir: false, medicos: MEDICOS_PADRAO.map((m) => ({ ...m })) };
+  db.config = {
+    metas: { ...METAS_PADRAO },
+    exigirArquivamentoParaConcluir: false,
+    medicos: MEDICOS_PADRAO.map((m) => ({ ...m })),
+    mensagens: { ...MODELOS_PADRAO },
+  };
   db.avisos = [];
   db.usuarios = EQUIPE.map((u) => ({ ...u, ativo: true }));
   db.pacientes = PACIENTES.map(([nome, nasc, tel], i) => ({
@@ -334,7 +350,7 @@ const CHAVE_DB = 'prontus_db';
 // Suba este número sempre que a FORMA dos dados mudar (campo novo, campo que sumiu). Uma aba
 // aberta desde antes da mudança tem o modelo velho guardado, e carregá-lo daria uma tela quebrada
 // por um motivo invisível — é mais barato descartar e semear de novo.
-const VERSAO_DB = 4;
+const VERSAO_DB = 6;
 
 function salvar() {
   try { sessionStorage.setItem(CHAVE_DB, JSON.stringify({ v: VERSAO_DB, db })); } catch { /* sem storage: vale só esta página */ }
@@ -368,6 +384,38 @@ export async function obter(tabela, id) {
 }
 export const pacientePor = (id) => db.pacientes.find((p) => p.id === id);
 export const prontuarioPor = (id) => db.prontuarios.find((p) => p.id === id);
+/**
+ * A pasta pelo código impresso na etiqueta. É o que o leitor de código de barras usa: um leitor
+ * USB não é um periférico que precise de integração — ele digita o código e aperta Enter, como
+ * uma pessoa muito rápida. Toda a "integração" é esta busca.
+ */
+export const prontuarioPorCodigo = (codigo) => {
+  const c = String(codigo || '').trim().toLowerCase();
+  return c ? db.prontuarios.find((p) => p.codigo.toLowerCase() === c) : undefined;
+};
+
+/**
+ * O QUE ESTE PACIENTE JÁ USOU DAS OUTRAS VEZES.
+ *
+ * Não é adivinhação nem automação de decisão: é o registro anterior dele, oferecido como valor
+ * JÁ PREENCHIDO no formulário, que a pessoa confirma ou troca. O médico que o acompanha e a forma
+ * como ele sempre recebe a receita são as duas perguntas que a equipe responde igual quase toda
+ * vez — e responder de novo o que o sistema já sabe é o trabalho que ele deveria estar poupando.
+ */
+export function sugestoesDoPaciente(paciente_id) {
+  const anteriores = db.solicitacoes
+    .filter((s) => s.paciente_id === paciente_id)
+    .sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em));
+  const comMedico = anteriores.find((s) => s.medico_nome);
+  const ids = new Set(anteriores.map((s) => s.id));
+  const entrega = [...db.entregas].reverse().find((e) => ids.has(e.solicitacao_id));
+  return {
+    medico_nome: comMedico?.medico_nome || null,
+    medico_registro: comMedico?.medico_registro || null,
+    modo_entrega: entrega?.modo || null,
+    atendimentos: anteriores.length,
+  };
+}
 
 /** Tudo o que a tela de detalhe precisa, numa chamada. Vira uma view/RPC no banco. */
 export async function dossie(id) {
@@ -450,7 +498,7 @@ export function possivelDuplicidade({ tipo, paciente_id }, janelaHoras = 24) {
 function avisar(sol, paraPapel, tipo, texto) {
   if (!paraPapel) return;
   db.avisos.push({
-    id: uid('avi'), solicitacao_id: sol.id, protocolo: sol.protocolo,
+    id: uid('avi'), solicitacao_id: sol.id, protocolo: sol.protocolo, etapa: sol.etapa,
     para_papel: paraPapel, tipo, texto, criado_em: agora(), lido_em: null, lido_por: null,
   });
 }
@@ -471,6 +519,46 @@ function avisarEquipeDaVez(sol, etapaAnterior, ator) {
     if (antes.includes(papel) && usuarioPor(ator)?.papeis.includes(papel)) continue;  // continua com quem já estava
     avisar(sol, papel, 'chegou_na_fila', F.proximaAcao(sol).texto);
   }
+}
+
+/**
+ * PRAZO ESTOURADO VIRA AVISO, não só linha vermelha.
+ *
+ * js/prazos.js já sabia dizer "atrasada", e a fila já pintava a linha. Mas pintar só alcança quem
+ * está com a tela aberta na fila certa — e o caso que trava é justamente aquele que ninguém está
+ * olhando. Faltava o passo seguinte: quando a meta estoura, a equipe da vez é AVISADA; quando
+ * passa do dobro, quem avisa é o sistema para a coordenação, porque aí já não é esquecimento de
+ * uma pessoa, é um caso sem ninguém.
+ *
+ * Avisa UMA VEZ por caso, por etapa e por nível. Um alerta que se repete a cada doze segundos
+ * deixa de ser alerta em dois dias — passa a ser o barulho que se aprende a ignorar.
+ *
+ * Em produção isto é uma tarefa agendada no banco, não uma função que a tela chama ao abrir.
+ */
+export function escalonarAtrasos() {
+  const metas = db.config.metas;
+  let novos = 0;
+  for (const sol of db.solicitacoes.filter(F.aberta)) {
+    const sit = situacao(sol, metas);
+    if (sit.estado !== 'atrasada') continue;
+    const horas = Math.round(sit.horas);
+    const alvos = [[F.papeisDaEtapa(sol)[0], 'atraso',
+      `Parada em "${F.ETAPAS[sol.etapa]}" há ${horas} h. A meta da clínica é ${sit.meta} h.`]];
+    // O dobro da meta é o limite em que o problema deixa de ser da equipe e passa a ser de quem
+    // coordena: alguém precisa destravar, e não vai ser quem já não agiu.
+    if (sit.horas >= sit.meta * 2) {
+      alvos.push(['admin', 'atraso_grave',
+        `Parada em "${F.ETAPAS[sol.etapa]}" há ${horas} h — mais que o dobro da meta de ${sit.meta} h.`]);
+    }
+    for (const [papel, tipo, texto] of alvos) {
+      if (!papel) continue;
+      if (db.avisos.some((a) => a.solicitacao_id === sol.id && a.tipo === tipo && a.etapa === sol.etapa)) continue;
+      avisar(sol, papel, tipo, texto);
+      novos += 1;
+    }
+  }
+  if (novos) salvar();
+  return novos;
 }
 
 /** Avisos ainda não lidos do papel. É o número do sininho. */
@@ -509,6 +597,23 @@ function sincronizarTarefa(sol, atorOuNulo) {
 
 /** Papéis do usuário que ainda estão na vez nesta etapa. Vazio = não é da vez dele. */
 const papeisNaVez = (sol, papeis) => F.papeisDaEtapa(sol).filter((p) => papeis.includes(p));
+
+/**
+ * Quem age num caso sem dono, estando na vez, VIRA o dono.
+ *
+ * Silencioso de propósito: o registro do que a pessoa fez já está sendo gravado na mesma
+ * operação, e um segundo evento dizendo "assumiu" encheria a linha do tempo de ruído sem
+ * acrescentar fato nenhum. O evento de "assumir" continua existindo para o clique explícito,
+ * onde ele significa outra coisa — reservar o caso ANTES de agir.
+ */
+function assumirSeLivre(sol, ator) {
+  if (sol.assumido_por || !F.aberta(sol)) return false;
+  if (!papeisNaVez(sol, usuarioPor(ator)?.papeis || []).length) return false;
+  sol.assumido_por = ator;
+  sol.assumido_em = agora();
+  sincronizarTarefa(sol, ator);
+  return true;
+}
 
 /** Espelho de uma futura RPC assumir_solicitacao(). */
 export async function assumirSolicitacao({ id, papeis, ator }) {
@@ -576,6 +681,42 @@ export async function moverSolicitacao({ id, transicao, papeis, ator, motivo, no
     }
     if (faltas.length) return erro('Não é possível concluir: ' + faltas[0]);
   }
+  // T04 e T05: A ETAPA E A PASTA ANDAM JUNTAS, NUM CLIQUE SÓ.
+  //
+  // `viaProntuario`, em js/fluxo.js, diz qual registro de custódia este passo representa — e até
+  // aqui o campo era só documentação. Na prática dava para marcar "entregue à Recepção" no eixo da
+  // solicitação com a pasta ainda constando como estando no arquivo, e os dois eixos passavam a
+  // contar histórias diferentes sobre o mesmo caso. Pior: obrigava a mesma pessoa a registrar duas
+  // vezes o mesmo gesto, em duas telas.
+  //
+  // Agora o mesmo clique grava os dois. E, se a custódia não permitir (a pasta nem foi retirada
+  // ainda), NADA acontece em nenhum dos dois eixos: a recusa vem antes de a etapa mudar.
+  // Quem já registrou a movimentação no painel do prontuário não a registra de novo: o passo
+  // GARANTE que a custódia esteja em dia, não insiste em repeti-la.
+  const custodiaPendente = t.viaProntuario && sol.prontuario_id
+    && !db.movimentos.some((m) => m.solicitacao_id === id && m.tipo === t.viaProntuario);
+  if (custodiaPendente) {
+    const custodia = await moverProntuario({
+      prontuario_id: sol.prontuario_id, mov: t.viaProntuario, papeis, ator, solicitacao_id: id,
+      nota: `Registrado junto com o passo "${t.rotulo}".`,
+    });
+    if (custodia.error) return custodia;
+  }
+  // AGIR É ASSUMIR.
+  //
+  // Antes era preciso clicar em "Assumir" antes de agir. Isso acontecia em dois momentos: quando
+  // alguém lembrava, e quando alguém cobrava. No resto do tempo o caso andava sem dono, e a
+  // pergunta "quem está com isso?" voltava para o grupo do WhatsApp — que é de onde este sistema
+  // tenta tirar a operação.
+  //
+  // A posse é gravada ANTES da transição, com a etapa em que a pessoa de fato trabalhou: é dessa
+  // que o histórico precisa. Logo abaixo, se o caso passar para outra equipe, a posse se desfaz
+  // sozinha, como sempre se desfez.
+  //
+  // O botão "Assumir" continua existindo para quem quer reservar o caso ANTES de agir ("eu ligo
+  // para este paciente"), que é o único momento em que ele informa algo que o sistema não teria
+  // como deduzir sozinho.
+  assumirSeLivre(sol, ator);
   const de = sol.etapa;
   sol.etapa = t.para; sol.etapa_desde = agora();
   if (t.desfecho) { sol.desfecho = t.desfecho; sol.concluida_em = agora(); }
@@ -624,6 +765,11 @@ export async function moverProntuario({ prontuario_id, mov, papeis, ator, solici
   if (regra.exigeAntes && !feitos.includes(regra.exigeAntes)) return erro(`Registre "${F.MOVIMENTOS[regra.exigeAntes]}" antes.`);
   // RN-17: repetir a mesma requisição não cria movimentação duplicada.
   if (feitos.includes(mov) && mov !== 'localizado') return ok({ ...pront, repetido: true });
+  // Mexer na pasta de um caso que é da sua vez também é agir nele — e, para o Arquivo, QUASE TODO
+  // o trabalho é isto. Exigir um clique em "Assumir" antes de cada movimentação seria pedir o
+  // dobro de cliques justamente a quem mais registra.
+  const solDoMovimento = solicitacao_id ? db.solicitacoes.find((s) => s.id === solicitacao_id) : null;
+  if (solDoMovimento) assumirSeLivre(solDoMovimento, ator);
   db.movimentos.push({ id: uid('mov'), prontuario_id, solicitacao_id: solicitacao_id || null, tipo: mov, ator_id: ator, nota: nota || '', criado_em: agora() });
   pront.local = regra.para; pront.custodia_usuario_id = ator;
   if (mov === 'arquivado') pront.solicitacao_id = null;
@@ -715,9 +861,13 @@ export async function concluirTarefa({ id, papeis = [], ator }) {
 export async function reiniciar() { semear(); salvar(); return ok(true); }
 
 /** Configuração da clínica. Em produção, uma tabela com RLS: só quem administra escreve. */
-export const configAtual = () => ({ ...db.config, metas: { ...db.config.metas } });
+export const configAtual = () => ({
+  ...db.config,
+  metas: { ...db.config.metas },
+  mensagens: { ...MODELOS_PADRAO, ...db.config.mensagens },
+});
 
-export async function salvarConfig({ metas, exigirArquivamentoParaConcluir, medicos, papeis, ator }) {
+export async function salvarConfig({ metas, exigirArquivamentoParaConcluir, medicos, mensagens, papeis, ator }) {
   if (!pode(papeis, 'configuracoes', 'editar')) return negado('Só a administração da clínica muda a configuração.');
   if (medicos) {
     const limpos = medicos
@@ -734,6 +884,17 @@ export async function salvarConfig({ metas, exigirArquivamentoParaConcluir, medi
       if (v !== null && (!Number.isFinite(v) || v <= 0 || v > 720)) return erro('A meta de cada etapa deve ficar entre 1 e 720 horas, ou ficar vazia.');
     }
     db.config.metas = { ...db.config.metas, ...metas };
+  }
+  if (mensagens) {
+    const limpos = {};
+    for (const [chave, texto] of Object.entries(mensagens)) {
+      if (!(chave in MODELOS_PADRAO)) return erro(`Modelo de mensagem desconhecido: ${chave}`);
+      const t = String(texto || '').trim();
+      if (!t) return erro('Nenhum modelo de mensagem pode ficar vazio. Para voltar ao texto de fábrica, use "Restaurar".');
+      if (t.length > 600) return erro('O modelo de mensagem passou de 600 caracteres.');
+      limpos[chave] = t;
+    }
+    db.config.mensagens = { ...db.config.mensagens, ...limpos };
   }
   if (typeof exigirArquivamentoParaConcluir === 'boolean') {
     db.config.exigirArquivamentoParaConcluir = exigirArquivamentoParaConcluir;

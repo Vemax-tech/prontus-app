@@ -10,11 +10,11 @@ import * as F from '../fluxo.js';
 import {
   dossie, moverSolicitacao, moverProntuario, registrarComunicacao, registrarAvaliacao,
   registrarEntrega, concluirTarefa, auditarLeitura, nomeDe, medicosDaClinica,
-  assumirSolicitacao, liberarSolicitacao,
+  assumirSolicitacao, liberarSolicitacao, configAtual, sugestoesDoPaciente, nomeDaClinica,
 } from '../dados.js';
 import {
   start, h, run, pageHead, badge, icon, modal, formModal, confirmDlg, copyText,
-  fmtDate, qs, desde, corEtapa, nota,
+  fmtDate, qs, desde, corEtapa, nota, recadoPronto, montarMensagem, primeiroNome,
 } from '../ui.js';
 import { PAPEIS } from '../permissoes.js';
 
@@ -30,6 +30,29 @@ const TRILHA = {
   pedido_receita: ['aberta', 'aguardando_prontuario', 'prontuario_em_transito', 'prontuario_na_recepcao', 'com_medico', 'retorno_disponivel', 'aguardando_contato_paciente', 'aguardando_entrega', 'concluida'],
 };
 
+/**
+ * Os recados que o sistema escreve sozinho. `modelo` é a chave em db.config.mensagens — o texto é
+ * da clínica e se edita em Configurações, não aqui —, e `tipo` é o que vai para o histórico de
+ * comunicações do caso.
+ */
+const RECADOS = {
+  pedido_prontuario: {
+    modelo: 'pedido_prontuario', tipo: 'pedido_prontuario',
+    titulo: 'Pedir o prontuário ao arquivo', submit: 'Registrar o pedido',
+    ok: 'Pedido registrado. O arquivo já vê na fila dele.',
+  },
+  aviso_retorno: {
+    modelo: 'aviso_retorno', tipo: 'aviso_retorno',
+    titulo: 'Avisar o grupo de que o retorno chegou', submit: 'Registrar o aviso',
+    ok: 'Aviso registrado. O Call Center já vê na fila dele.',
+  },
+  aviso_receita: {
+    modelo: 'aviso_receita', tipo: 'aviso_receita',
+    titulo: 'Avisar o grupo de que a receita está pronta', submit: 'Registrar o aviso',
+    ok: 'Aviso registrado. O Call Center já vê na fila dele.',
+  },
+};
+
 export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ctx, view) => {
   const id = qs('id');
   let d = null;
@@ -43,6 +66,18 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
 
   const pintar = () => { view.replaceChildren(montar()); };
   const agir = async (p, msg) => { const r = await run(p, msg); if (r) { await recarregar(); pintar(); } return r; };
+
+  /** Tudo o que um modelo de mensagem pode citar, tirado do caso que está aberto. */
+  const dadosDoRecado = () => ({
+    protocolo: d.sol.protocolo,
+    paciente: d.paciente.nome,
+    primeiro_nome: primeiroNome(d.paciente.nome),
+    prontuario: d.prontuario?.codigo,
+    estante: d.prontuario?.local_arquivo,
+    tipo: F.TIPOS[d.sol.tipo],
+    medico: d.sol.medico_nome,
+    clinica: nomeDaClinica(),
+  });
 
   // ---------------------------------------------------------------- ações da solicitação
   function acoesSolicitacao() {
@@ -85,21 +120,27 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
   }
 
   async function executar(t) {
-    // T03: pedir o prontuário é, no processo real, publicar no grupo. Registramos a comunicação junto.
+    // T03 e T10: no processo real, estes dois passos são uma mensagem publicada no grupo. O
+    // sistema escreve o texto a partir do modelo da clínica — ele já conhece protocolo, paciente,
+    // código da pasta, estante e médico —, abre o WhatsApp com ele pronto, e o mesmo formulário
+    // grava a comunicação. Um gesto no lugar de três (digitar lá, voltar, registrar aqui).
     if (t.exigeComunicacao) {
-      const texto = `Protocolo ${d.sol.protocolo} — localizar o prontuário ${d.prontuario?.codigo || ''} (${d.paciente.nome}).`;
+      const cfg = RECADOS[t.exigeComunicacao === 'aviso_retorno' && d.sol.tipo === 'pedido_receita'
+        ? 'aviso_receita' : t.exigeComunicacao];
+      const texto = montarMensagem(configAtual().mensagens[cfg.modelo], dadosDoRecado());
       const v = await pedir({
-        title: 'Pedir o prontuário ao arquivo',
-        submitLabel: 'Registrar o pedido',
+        title: cfg.titulo,
+        submitLabel: cfg.submit,
         fields: [
           { name: 'canal', label: 'Canal usado', type: 'select', value: 'whatsapp_grupo', options: Object.entries(F.CANAIS) },
-          { name: 'texto', label: 'Mensagem publicada', type: 'textarea', value: texto, maxlength: 1000, hint: 'O sistema NÃO envia a mensagem. Você publica no grupo e registra aqui o que foi feito.' },
+          { name: 'texto', label: 'Mensagem publicada', type: 'textarea', value: texto, maxlength: 1000, hint: 'O texto saiu do modelo da clínica, em Configurações. Corrija à vontade: o que fica no histórico é o que estiver aqui.' },
         ],
+        extras: (form, ler) => recadoPronto(form, () => ler('texto')),
       });
       if (!v) return;
-      const c = await run(registrarComunicacao({ solicitacao_id: id, tipo: 'pedido_prontuario', destinatario: 'Grupo operacional', resultado: 'registrada', ...v, papeis: ctx.papeis, ator: ctx.ator }));
+      const c = await run(registrarComunicacao({ solicitacao_id: id, tipo: cfg.tipo, destinatario: 'Grupo operacional', resultado: 'registrada', ...v, papeis: ctx.papeis, ator: ctx.ator }));
       if (!c) return;
-      return agir(moverSolicitacao({ id, transicao: t.id, papeis: ctx.papeis, ator: ctx.ator }), 'Pedido registrado. O arquivo já vê na fila dele.');
+      return agir(moverSolicitacao({ id, transicao: t.id, papeis: ctx.papeis, ator: ctx.ator }), cfg.ok);
     }
     // T06: o caso sai do sistema. Antes de sair, o sistema pergunta para onde — sem isso ele não
     // sabe com quem o caso está nem com que assinatura o retorno vai voltar.
@@ -108,16 +149,26 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
     if (t.id === 'T07') return registrarRetorno();
     // T12: paciente avisado -> escolher como a receita chega.
     if (t.id === 'T12') {
+      // A forma de entrega vem JÁ ESCOLHIDA quando este paciente já recebeu antes: quem sempre
+      // retira na clínica vai retirar de novo, e perguntar o que o sistema já sabe é a pergunta
+      // que a equipe responde no automático — e responde errado quando está com pressa.
+      const sugerido = sugestoesDoPaciente(d.sol.paciente_id);
+      const texto = montarMensagem(configAtual().mensagens.contato_paciente,
+        { ...dadosDoRecado(), assunto: 'A sua receita já está pronta aqui na clínica.' });
       const v = await pedir({
         title: 'Como a receita vai chegar ao paciente?',
         submitLabel: 'Registrar',
         fields: [
           { name: 'resultado', label: 'Resultado do contato com o paciente', type: 'select', value: 'falou', options: Object.entries(F.RESULTADOS).filter(([k]) => ['falou', 'nao_atendeu', 'recado', 'numero_invalido'].includes(k)), hint: 'Tentativa sem sucesso não conclui o caso.' },
-          { name: 'modo', label: 'Forma de entrega', type: 'select', value: 'fisica', options: Object.entries(F.ENTREGA_MODOS) },
+          { name: 'modo', label: 'Forma de entrega', type: 'select', value: sugerido.modo_entrega || 'fisica', options: Object.entries(F.ENTREGA_MODOS), hint: sugerido.modo_entrega ? `Já vem marcada: foi assim nas outras ${sugerido.atendimentos} vez(es) deste paciente. Troque se for diferente.` : null },
+          { name: 'texto', label: 'Mensagem para o paciente', type: 'textarea', value: texto, maxlength: 600, hint: 'Vale para quem avisa por WhatsApp. Se o contato foi por telefone, isto fica como o resumo do que foi dito.' },
         ],
+        // O número do paciente o sistema já tem: aqui o WhatsApp abre a conversa CERTA, não uma
+        // lista de contatos para procurar.
+        extras: (form, ler) => recadoPronto(form, () => ler('texto'), { telefone: d.paciente.telefone }),
       });
       if (!v) return;
-      const c = await run(registrarComunicacao({ solicitacao_id: id, canal: 'telefone', tipo: 'contato_paciente', destinatario: d.paciente.nome, resultado: v.resultado, texto: 'Paciente avisado de que a receita está pronta.', papeis: ctx.papeis, ator: ctx.ator }));
+      const c = await run(registrarComunicacao({ solicitacao_id: id, canal: 'telefone', tipo: 'contato_paciente', destinatario: d.paciente.nome, resultado: v.resultado, texto: v.texto, papeis: ctx.papeis, ator: ctx.ator }));
       if (!c) return;
       const e = await run(registrarEntrega({ solicitacao_id: id, modo: v.modo, estado: v.modo === 'fisica' ? 'orientada' : 'anunciada', nota: v.modo === 'fisica' ? 'Paciente orientado a retirar na clínica.' : 'Informado que será enviada digitalmente.', papeis: ctx.papeis, ator: ctx.ator }));
       if (!e) return;
@@ -160,19 +211,27 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
   /** T06: a Recepção leva o caso impresso e o prontuário até a sala. Qual sala? */
   function levarAoMedico(t) {
     const medicos = medicosDaClinica();
+    // O médico que acompanha este paciente é o da última vez dele. O sistema sabe disso e já
+    // deixa escolhido — continua trocável, e a dica diz de onde veio o palpite, para ninguém
+    // confirmar no automático achando que foi o sistema que decidiu.
+    const sugerido = sugestoesDoPaciente(d.sol.paciente_id);
+    const conhecido = sugerido.medico_nome && medicos.some((m) => m.nome === sugerido.medico_nome)
+      ? sugerido.medico_nome : null;
     formModal({
       title: 'Levar o caso ao médico',
       submitLabel: 'Registrar a saída',
       fields: medicos.length
         ? [{
           name: 'medico_nome', label: 'A quem o caso foi levado', type: 'select',
-          value: d.sol.medico_nome || medicos[0].nome,
+          value: d.sol.medico_nome || conhecido || medicos[0].nome,
           options: medicos.map((m) => [m.nome, `${m.nome} — ${m.especialidade || m.registro}`]),
-          hint: 'A lista é mantida pela administração em Configurações. O registro profissional vem junto e assina o retorno.',
+          hint: conhecido && !d.sol.medico_nome
+            ? `Já vem marcado ${conhecido}: foi quem atendeu este paciente da última vez. Troque se hoje for outro.`
+            : 'A lista é mantida pela administração em Configurações. O registro profissional vem junto e assina o retorno.',
         }]
         : [
-          { name: 'medico_nome', label: 'Nome do médico', required: true, maxlength: 80, value: d.sol.medico_nome || '' },
-          { name: 'medico_registro', label: 'Registro profissional (CRM)', required: true, maxlength: 40, value: d.sol.medico_registro || '', hint: 'A clínica ainda não cadastrou a lista de médicos em Configurações; digite desta vez.' },
+          { name: 'medico_nome', label: 'Nome do médico', required: true, maxlength: 80, value: d.sol.medico_nome || sugerido.medico_nome || '' },
+          { name: 'medico_registro', label: 'Registro profissional (CRM)', required: true, maxlength: 40, value: d.sol.medico_registro || sugerido.medico_registro || '', hint: 'A clínica ainda não cadastrou a lista de médicos em Configurações; digite desta vez.' },
         ],
       onSubmit: async (v) => {
         const r = await agir(

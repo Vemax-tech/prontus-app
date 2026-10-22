@@ -8,7 +8,24 @@
 import * as F from '../fluxo.js';
 import { configAtual, salvarConfig } from '../dados.js';
 import { METAS_PADRAO } from '../prazos.js';
+import { MODELOS_PADRAO, CAMPOS_MODELO, montar } from '../mensagens.js';
 import { start, h, run, pageHead, empty, badge, nota, icon } from '../ui.js';
+
+/** Como cada modelo aparece nesta tela: onde ele é usado, em uma linha. */
+const ONDE_USA = {
+  pedido_prontuario: 'Call Center → grupo, ao pedir a pasta ao arquivo',
+  aviso_retorno: 'Recepção → grupo, quando o médico respondeu',
+  aviso_receita: 'Recepção → grupo, quando a receita ficou pronta',
+  contato_paciente: 'Call Center → paciente, no WhatsApp',
+};
+
+/** Um caso de mentira só para a prévia: mostra como o texto fica preenchido, sem dado real. */
+const EXEMPLO = {
+  protocolo: '1042', paciente: 'Maria Aparecida Souza', primeiro_nome: 'Maria',
+  prontuario: 'PR-2002', estante: 'B-11', tipo: 'Solicitação de receita médica',
+  medico: 'Dra. Helena Fontes', clinica: 'Clínica (demonstração)',
+  assunto: 'A sua receita já está pronta aqui na clínica.',
+};
 
 /** Linha vazia da lista de médicos. */
 const MEDICO_NOVO = () => ({ nome: '', registro: '', especialidade: '' });
@@ -32,6 +49,7 @@ export const init = () => start('configuracoes/', 'Configurações', async (ctx,
     metas: { ...cfg.metas },
     exigirArquivamentoParaConcluir: cfg.exigirArquivamentoParaConcluir,
     medicos: (cfg.medicos || []).map((m) => ({ ...m })),
+    mensagens: { ...MODELOS_PADRAO, ...cfg.mensagens },
   };
 
   const corpo = h('div');
@@ -41,6 +59,7 @@ export const init = () => start('configuracoes/', 'Configurações', async (ctx,
     metas: cfg.metas,
     exigirArquivamentoParaConcluir: cfg.exigirArquivamentoParaConcluir,
     medicos: cfg.medicos || [],
+    mensagens: { ...MODELOS_PADRAO, ...cfg.mensagens },
   });
 
   function pintarBotoes() {
@@ -111,6 +130,54 @@ export const init = () => start('configuracoes/', 'Configurações', async (ctx,
           : null));
   }
 
+  /**
+   * OS RECADOS QUE O SISTEMA ESCREVE.
+   *
+   * O sistema não envia mensagem nenhuma — quem publica no grupo e quem fala com o paciente é a
+   * equipe. O que ele faz é escrever o texto, com os dados que já tem, e abrir o WhatsApp com ele
+   * pronto. Por isso o texto precisa ser DA CLÍNICA: cada uma fala de um jeito, e um recado que
+   * não soa como o da casa é um recado que a equipe vai reescrever na mão — o que anularia o
+   * ganho inteiro.
+   *
+   * A prévia embaixo de cada campo usa um caso de mentira: é a única forma de ver o resultado
+   * sem abrir um atendimento real só para conferir uma vírgula.
+   */
+  function painelMensagens() {
+    const campo = (chave) => {
+      const previa = h('p', { class: 'micro muted previa' });
+      const atualizar = () => { previa.textContent = montar(rascunho.mensagens[chave], EXEMPLO); };
+      atualizar();
+      return h('div', { class: 'modelo' },
+        h('label', { for: 'mod_' + chave },
+          h('b', {}, ONDE_USA[chave]),
+          h('span', { class: 'micro muted' }, ' · ', chave)),
+        h('textarea', {
+          id: 'mod_' + chave, rows: '2', maxlength: '600', value: rascunho.mensagens[chave],
+          disabled: podeEditar ? null : '',
+          oninput: (e) => { rascunho.mensagens[chave] = e.target.value; atualizar(); pintarBotoes(); },
+        }),
+        previa);
+    };
+
+    return h('section', { class: 'panel', style: 'margin-top:16px' },
+      h('div', { class: 'ph' },
+        h('div', {},
+          h('h2', {}, 'Recados que o sistema escreve'),
+          h('p', { class: 'micro muted' }, 'O texto que aparece pronto na hora de avisar. Quem envia continua sendo a equipe.')),
+        badge(`${Object.keys(MODELOS_PADRAO).length} modelos`, 'info')),
+      h('div', { class: 'pb' },
+        nota('', 'Entre chaves vai um dado do caso, que o sistema troca na hora: '
+          + Object.entries(CAMPOS_MODELO).map(([k, v]) => `{${k}} = ${v}`).join(' · ')
+          + '. Uma chave escrita errado fica no texto como está, em vez de sumir — some do recado é pior que aparecer.'),
+        h('div', { style: 'margin-top:12px' }, Object.keys(MODELOS_PADRAO).map(campo)),
+        podeEditar
+          ? h('button', {
+            class: 'btn sm', type: 'button', style: 'margin-top:4px',
+            onclick: () => { rascunho.mensagens = { ...MODELOS_PADRAO }; pintar(); },
+          }, 'Restaurar os textos de fábrica')
+          : null));
+  }
+
   function linhaMeta(etapa) {
     const v = rascunho.metas[etapa];
     return h('tr', {},
@@ -151,6 +218,8 @@ export const init = () => start('configuracoes/', 'Configurações', async (ctx,
 
       painelMedicos(),
 
+      painelMensagens(),
+
       h('section', { class: 'panel', style: 'margin-top:16px' },
         h('div', { class: 'ph' }, h('h2', {}, 'Quando um caso pode ser concluído')),
         h('div', { class: 'pb' },
@@ -172,7 +241,7 @@ export const init = () => start('configuracoes/', 'Configurações', async (ctx,
 
   view.append(
     pageHead('Administração', 'Configurações',
-      'O que a clínica define para si: os prazos que geram alerta, quem atende e a regra de conclusão.'),
+      'O que a clínica define para si: os prazos que geram alerta, quem atende, os recados que o sistema escreve e a regra de conclusão.'),
     corpo,
     h('p', { class: 'micro muted', style: 'margin-top:20px' }, icon('shield'),
       ' Mudança de configuração entra na auditoria com quem mudou e quando.'));

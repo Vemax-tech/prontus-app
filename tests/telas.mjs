@@ -290,6 +290,135 @@ trocarPapel('callcenter');
 await abrirTela('solicitacao.js', 'initFicha', `solicitacoes/detalhe.html?id=${nova.id}`);
 check(body().includes('Próxima ação'), 'detalhe reabre e mostra a próxima ação');
 
+// ================================================================ 9. automação
+//
+// Cada verificação daqui para baixo corresponde a um clique, ou a uma digitação, que a equipe
+// deixou de dar. São as partes do sistema que FAZEM em vez de pedir — e justamente por isso as
+// que mais precisam de teste: automação errada é pior que trabalho manual, porque acontece sem
+// ninguém olhando.
+console.log('\n## Automação: o que o sistema passou a fazer sozinho');
+const Filas = await mod('filas.js');
+const Msg = await mod('mensagens.js');
+
+// --- a etapa e a pasta andam juntas, e quem age vira dono
+//
+// O paciente é escolhido entre os que têm a pasta NO ARQUIVO e nenhum atendimento aberto: dois
+// casos abertos disputando o mesmo prontuário são um estado que o processo não prevê, e montar o
+// teste em cima dele mediria outra coisa.
+const paraArquivo = async () => {
+  const sols = (await D.listar('solicitacoes')).data;
+  const ocupados = new Set(sols.filter(F.aberta).map((s) => s.paciente_id));
+  const livre = (await D.listar('prontuarios')).data
+    .find((p) => p.local === 'arquivo' && !p.solicitacao_id && !ocupados.has(p.paciente_id));
+  if (!livre) throw new Error('o cenário do teste acabou: nenhum paciente com a pasta no arquivo');
+  const s = (await D.abrirSolicitacao({ tipo: 'pedido_receita', paciente_id: livre.paciente_id, relato: 'teste de automação', papeis: ['callcenter'], ator: 'u-cc1' })).data;
+  await D.moverSolicitacao({ id: s.id, transicao: 'T03', papeis: ['callcenter'], ator: 'u-cc1' });
+  return s;
+};
+const auto = await paraArquivo();
+r = await D.moverSolicitacao({ id: auto.id, transicao: 'T04', papeis: ['arquivo'], ator: 'u-ar1' });
+check(Boolean(r.error), 'T04 é recusada enquanto a pasta não foi localizada nem retirada');
+check((await D.obter('solicitacoes', auto.id)).data.etapa === 'aguardando_prontuario', 'e a recusa não moveu a etapa pela metade');
+check(!(await D.obter('solicitacoes', auto.id)).data.assumido_por, 'o caso chega ao Arquivo sem dono: quem abriu já passou a vez');
+await passo('o Arquivo registra que localizou', D.moverProntuario({ prontuario_id: auto.prontuario_id, mov: 'localizado', papeis: ['arquivo'], ator: 'u-ar1', solicitacao_id: auto.id }));
+check((await D.obter('solicitacoes', auto.id)).data.assumido_por === 'u-ar1', 'e quem registrou virou dono do caso sem clicar em Assumir');
+await D.moverProntuario({ prontuario_id: auto.prontuario_id, mov: 'retirado', papeis: ['arquivo'], ator: 'u-ar1', solicitacao_id: auto.id });
+await passo('agora T04 passa, num clique só', D.moverSolicitacao({ id: auto.id, transicao: 'T04', papeis: ['arquivo'], ator: 'u-ar1' }));
+const depois = (await D.dossie(auto.id)).data;
+check(depois.prontuario.local === 'em_transito_para_recepcao', 'e a transição levou a pasta junto, sozinha (viaProntuario)');
+check(depois.movimentos.some((m) => m.tipo === 'entregue'), 'com movimento de custódia gravado, não só a etapa mudada');
+check(!depois.sol.assumido_por, 'ao passar para a Recepção, a posse do Arquivo se desfaz sozinha');
+
+// --- prazo estourado vira aviso, e só uma vez
+//
+// A casca já roda esta varredura ao abrir qualquer tela, então a esta altura os atrasos semeados
+// já viraram aviso. Para testar a CRIAÇÃO, o teste atrasa um caso de propósito.
+D.db.solicitacoes.find((s) => s.id === auto.id).etapa_desde = new Date(Date.now() - 500 * 3600e3).toISOString();
+const antesDeEscalonar = (await D.listar('avisos')).data.length;
+const n1 = D.escalonarAtrasos();
+const n2 = D.escalonarAtrasos();
+const avisosAgora = (await D.listar('avisos')).data;
+check(n1 >= 2, `o prazo estourado virou aviso para a equipe e para a coordenação (${n1} criado(s))`);
+check(n2 === 0, 'e repetir a varredura não duplica: alerta que repete deixa de ser alerta');
+check(avisosAgora.length === antesDeEscalonar + n1, 'nada foi criado por fora da conta');
+check(avisosAgora.some((a) => a.solicitacao_id === auto.id && a.tipo === 'atraso'), 'a equipe da vez foi avisada');
+check(avisosAgora.some((a) => a.solicitacao_id === auto.id && a.tipo === 'atraso_grave' && a.para_papel === 'admin'), 'e o dobro da meta sobe para a coordenação');
+
+// --- posse de uma equipe não esconde o caso da outra
+//
+// Com "agir é assumir", quase todo caso em andamento passou a ter dono — e aí esta regra, que
+// antes quase não era exercida, virou a diferença entre a Recepção ver ou não ver o trabalho
+// dela. A etapa de entrega é das duas equipes: o Call Center define como a receita chega, a
+// Recepção confirma a retirada.
+const compartilhado = (await D.listar('solicitacoes')).data
+  .find((s) => s.etapa === 'aguardando_entrega' && F.papeisDaEtapa(s).length > 1);
+if (compartilhado) {
+  D.db.solicitacoes.find((s) => s.id === compartilhado.id).assumido_por = 'u-cc1';
+  const DP = await Filas.dadosDasFilas();
+  const naFilaDe = (papel) => Filas.filasDoPapel(papel, DP)
+    .map((f) => Filas.repartir(f, 'u-re1', papel))
+    .some((f) => f.livres.some((it) => it.id === compartilhado.id));
+  check(naFilaDe('recepcao'), 'caso assumido pelo Call Center continua solto na fila da Recepção');
+  const naFilaDoCc = Filas.filasDoPapel('callcenter', DP)
+    .map((f) => Filas.repartir(f, 'u-cc2', 'callcenter'))
+    .some((f) => f.assumidos.some((it) => it.id === compartilhado.id));
+  check(naFilaDoCc, 'e aparece como "já tem dono" para a própria equipe de quem assumiu');
+}
+
+// --- o que o sistema já sabe sobre o paciente
+const comMedico = (await D.listar('solicitacoes')).data.find((s) => s.medico_nome);
+const sug = D.sugestoesDoPaciente(comMedico.paciente_id);
+check(sug.medico_nome === comMedico.medico_nome, 'o médico sugerido é o da última vez daquele paciente');
+check(sug.atendimentos >= 1, 'e a sugestão diz em quantos atendimentos ela se baseia');
+
+// --- o próximo caso
+const DD = await Filas.dadosDasFilas();
+const metasAtuais = D.configAtual().metas;
+const prox = Filas.proximoCaso('arquivo', 'u-ar1', DD, metasAtuais);
+check(Boolean(prox?.protocolo), 'o Arquivo tem um próximo caso para abrir');
+check(F.papeisDaEtapa(prox).includes('arquivo'), 'e ele é mesmo da vez do Arquivo');
+const deOutro = Filas.proximoCaso('arquivo', 'u-ninguem', DD, metasAtuais);
+check(!deOutro || !deOutro.assumido_por, 'o próximo nunca é um caso que já tem outro dono');
+
+// --- os recados que o sistema escreve
+check(Msg.montar('Protocolo {protocolo} — {paciente}', { protocolo: 9, paciente: 'Fulana' }) === 'Protocolo 9 — Fulana', 'o modelo é preenchido com os dados do caso');
+check(Msg.montar('vai {inexistente}', {}) === 'vai {inexistente}', 'chave sem valor fica visível em vez de sumir do recado');
+check(Msg.numeroWhats('(11) 98100-0001') === '5511981000001', 'o telefone do paciente vira número de WhatsApp');
+check(Msg.numeroWhats('123') === null, 'e número do qual não dá para ter certeza não vira link nenhum');
+check(Msg.linkWhatsApp('oi', '(11) 98100-0001').startsWith('https://wa.me/5511981000001?text=oi'), 'o link abre a conversa certa com o texto pronto');
+const salvou = await D.salvarConfig({ mensagens: { pedido_prontuario: 'Buscar {prontuario} para {paciente}.' }, papeis: ['admin'], ator: 'u-ad1' });
+check(!salvou.error && salvou.data.mensagens.pedido_prontuario.startsWith('Buscar'), 'a clínica edita o texto dos recados');
+check(Boolean((await D.salvarConfig({ mensagens: { pedido_prontuario: '  ' }, papeis: ['admin'], ator: 'u-ad1' })).error), 'e um modelo vazio é recusado');
+check(Boolean((await D.salvarConfig({ mensagens: { inventado: 'x' }, papeis: ['admin'], ator: 'u-ad1' })).error), 'modelo desconhecido também');
+check(D.prontuarioPorCodigo('pr-2001')?.codigo === 'PR-2001', 'o código bipado acha a pasta, sem ligar para maiúsculas');
+check(D.prontuarioPorCodigo('não existe') === undefined, 'e um código que não existe não acha nada');
+
+// --- as telas do lote e do formulário que digita menos
+console.log('\n## Automação na tela');
+await paraArquivo();
+await paraArquivo();
+trocarPapel('arquivo');
+await abrirTela('filas.js');
+const lote = doc.querySelector('.lote');
+check(Boolean(lote) && !lote.hidden, 'a fila do Arquivo oferece trabalho em lote quando o passo é o mesmo para todos');
+check(Boolean(doc.querySelector('.lote .bipe')), 'com campo para o leitor de código de barras');
+check(doc.querySelectorAll('.qlista .lotechk').length >= 2, 'e uma caixa de seleção em cada linha');
+check(/Registrar que localizou/.test(lote.textContent), 'o botão do lote diz qual passo vai aplicar');
+
+trocarPapel('callcenter');
+await abrirTela('solicitacoes.js');
+const novoPedido = [...doc.querySelectorAll('.head .btn')].find((b) => b.textContent.includes('Pedido de receita'));
+check(Boolean(novoPedido), 'o Call Center tem o botão de abrir pedido de receita');
+clicar(novoPedido);
+await wait(40);
+check(Boolean(doc.querySelector('.ov datalist option')), 'o paciente se escolhe digitando, não rolando a lista inteira');
+check(doc.querySelectorAll('.ov .rapidas .chip').length >= 3, 'e o relato tem as frases de sempre como botão');
+const chip = doc.querySelector('.ov .rapidas .chip');
+const relato = doc.querySelector('.ov [name="relato"]');
+clicar(chip);
+check(relato.value === chip.textContent, 'clicar na frase escreve o relato');
+doc.querySelector('.ov').remove();
+
 // ================================================================ resultado
 console.log('');
 if (erros.length) console.log(`console.error inesperado: ${erros.length}`);

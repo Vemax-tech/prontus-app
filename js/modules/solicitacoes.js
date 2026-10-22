@@ -32,10 +32,20 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
   const entregaDe = (s) => entregas.find((e) => e.solicitacao_id === s.id);
 
   // ---------------------------------------------------------------- nova solicitação
+  // As frases que a clínica ouve o dia inteiro, por tipo de pedido. Encurtam a digitação de quem
+  // está com o paciente na linha, e padronizam o texto — e é o texto padronizado que, mais tarde,
+  // permite responder "por que as pessoas ligam?" com número em vez de impressão.
+  const FRASES = {
+    pedido_receita: ['Receita de uso contínuo acabou.', 'Perdeu a receita.', 'A receita venceu.', 'Precisa de uma via para o plano.', 'Vai viajar e precisa da receita antes.'],
+    duvida_correcao: ['Dosagem ilegível na receita.', 'Dúvida sobre o horário de tomar.', 'Nome do medicamento está errado.', 'A farmácia recusou a receita.', 'Quer saber se pode trocar por genérico.'],
+  };
   const campos = (tipo) => [
-    { name: 'paciente_id', label: 'Paciente', type: 'select', required: true, options: [['', '— selecione —'], ...pacientes.map((p) => [p.id, `${p.nome} · nasc. ${fmtDate(p.nascimento)}`])] },
+    // Digitar, não rolar: com o cadastro inteiro da clínica aqui dentro, uma lista de opções é
+    // uma lista que ninguém percorre. A data de nascimento fica no rótulo porque é o que separa
+    // dois pacientes de mesmo nome — que numa clínica existem.
+    { name: 'paciente_id', label: 'Paciente', type: 'buscavel', required: true, placeholder: 'Digite o nome do paciente…', options: pacientes.map((p) => [p.id, `${p.nome} · nasc. ${fmtDate(p.nascimento)}`]), hint: 'Comece a digitar o nome e escolha na lista.' },
     { name: 'tipo', label: 'Tipo de solicitação', type: 'select', value: tipo, options: Object.entries(F.TIPOS), hint: 'Os dois fluxos são diferentes e não se transformam um no outro.' },
-    { name: 'relato', label: 'Relato do paciente', type: 'textarea', required: true, maxlength: 2000, hint: 'O que o paciente disse. Só o necessário para a equipe resolver.' },
+    { name: 'relato', label: 'Relato do paciente', type: 'textarea', required: true, maxlength: 2000, chips: FRASES[tipo] || [], hint: 'O que o paciente disse. Os botões acima escrevem as frases de sempre; o resto é texto livre.' },
     { name: 'prioridade', label: 'Prioridade', type: 'select', value: 'normal', options: Object.entries(PRIO) },
   ];
   const nova = (tipo = 'duvida_correcao') => formModal({
@@ -136,7 +146,7 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
   view.append(
     pageHead('Operação', 'Solicitações', 'Dúvida ou correção na receita e pedido de nova receita. Os dois fluxos convivem aqui, sem se misturar.',
       canAbrir && h('button', { class: 'btn', onclick: () => nova('duvida_correcao') }, icon('check'), 'Dúvida ou correção'),
-      canAbrir && h('button', { class: 'btn primary', onclick: () => nova('pedido_receita') }, icon('file'), 'Pedido de receita')),
+      canAbrir && h('button', { class: 'btn primary', onclick: () => nova('pedido_receita') }, icon('file'), 'Pedido de receita', h('span', { class: 'kbd' }, 'N'))),
     !verPaciente && h('p', { class: 'note', style: 'margin-bottom:14px' }, 'O seu papel vê o paciente de forma reduzida: o nome aparece só onde é necessário para a sua função.'),
     filtros([
       { tipo: 'busca', chave: 'q', placeholder: 'Buscar por protocolo, paciente ou relato…' },
@@ -148,6 +158,29 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
       { tipo: 'select', chave: 'prio', rotulo: 'Todas as prioridades', opcoes: Object.entries(PRIO) },
       { tipo: 'select', chave: 'abertas', rotulo: 'Abertas e encerradas', opcoes: [['1', 'Só em aberto']] },
     ], f, draw),
-    body);
+    body,
+    canAbrir && h('p', { class: 'micro muted', style: 'margin-top:20px' }, icon('check'),
+      ' Quem atende em série não deveria precisar do mouse: ', h('b', {}, 'N'), ' abre um pedido de receita,'
+      + ' ', h('b', {}, '/'), ' pula para a busca e ', h('b', {}, 'Esc'), ' fecha o que estiver aberto.'));
   draw();
+
+  // ATALHOS DE TECLADO. Numa mesa que atende oitenta ligações por dia, a mão que sai do teclado
+  // para o mouse e volta é o custo que mais se repete no sistema inteiro — e é o único que
+  // nenhuma tela bonita resolve. `/` para buscar é a convenção que a equipe já usa no navegador
+  // e no chat; `N` abre o pedido mais comum, e a tecla aparece escrita no próprio botão, porque
+  // atalho que ninguém descobre não existe.
+  const digitando = () => /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')
+    || Boolean(document.querySelector('.ov'));
+  const atalhos = (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || digitando()) return;
+    if (e.key === '/') {
+      const busca = view.querySelector('.toolbar input[type="search"]');
+      if (!busca) return;
+      e.preventDefault(); busca.focus(); busca.select();
+    } else if ((e.key === 'n' || e.key === 'N') && canAbrir) {
+      e.preventDefault(); nova('pedido_receita');
+    }
+  };
+  document.addEventListener('keydown', atalhos);
+  window.addEventListener('pagehide', () => document.removeEventListener('keydown', atalhos), { once: true });
 });

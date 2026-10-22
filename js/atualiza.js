@@ -41,8 +41,10 @@ export async function vigiarNovidades({ assinatura, aoMudar, intervalo = INTERVA
     } finally { rodando = false; }
   };
 
-  const ligar = () => { if (!timer) timer = setInterval(checar, intervalo); };
-  const desligar = () => { if (timer) { clearInterval(timer); timer = null; } };
+  // Relógio da JANELA, não do processo: fechar a página o encerra sozinho, inclusive no jsdom
+  // dos testes, onde não há "fechar a aba" para disparar o pagehide que chamaria parar().
+  const ligar = () => { if (!timer) timer = window.setInterval(checar, intervalo); };
+  const desligar = () => { if (timer) { window.clearInterval(timer); timer = null; } };
 
   const aoTrocarVisibilidade = () => {
     if (document.hidden) { desligar(); return; }
