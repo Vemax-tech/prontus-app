@@ -15,7 +15,7 @@ Junto com eles, o sistema controla a **custódia do prontuário físico** (onde 
 
 ## Estado atual: demonstração funcional
 
-O que está neste repositório é a **vitrine**: o fluxo, as regras, as permissões e todas as telas funcionando de verdade, com **dados fictícios em memória**. Não há servidor, banco, login nem rede — abrir o `index.html` por um servidor estático basta.
+O que está neste repositório é a **vitrine**: o fluxo, as regras, as permissões e todas as telas funcionando de verdade, com **dados fictícios em memória**. Os dados do fluxo são fictícios e ficam em memória. O **login é real**: Supabase Auth + Postgres com RLS (ver [Login](#login)).
 
 Uma faixa no topo diz isso o tempo todo, de propósito, e o botão **Reiniciar dados** devolve tudo ao estado inicial.
 
@@ -30,6 +30,17 @@ npm run cores    # só a paleta: contraste, daltonismo, etiquetas e rampa, nos d
 npm install      # só na primeira vez, para os testes (jsdom)
 npm test         # renderiza toda tela com todo papel e exercita os dois fluxos de ponta a ponta
 ```
+
+### Login
+
+Senha, sessão e papel vêm do Supabase (`js/auth.js`, `supabase/migrations/0001_perfis.sql`): hash e limite de tentativas no Auth, papel na tabela `perfis` com RLS, sem cadastro aberto (contas só pelo administrador/painel). Toda página, menos `login/`, exige sessão (`js/boot.js`), confere o perfil no servidor a cada abertura e encerra a sessão após 30 min sem uso. O que **ainda é demonstração**: os dados do fluxo (solicitações, prontuários) seguem em memória em `js/dados.js`; a RLS desses dados entra quando eles forem para o banco.
+
+```bash
+npm run auth:local   # sobe Postgres + Auth + PostgREST no Docker e cria uma conta por papel (supabase/local)
+npm run test:auth    # login de ponta a ponta contra essa stack: senha, RLS, desativação, logout, ?next=
+```
+
+Contas locais: `admin|callcenter|arquivo|recepcao@prontus.local`, senha `Prontus-Local-2026!` (só nesta stack). Em produção: preencha `js/config.js` (URL e chave **anon**, nunca a `service_role`), aplique a migration, crie o primeiro administrador e ajuste o `connect-src` em `_headers`.
 
 ### Publicar
 

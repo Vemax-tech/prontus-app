@@ -69,6 +69,14 @@ export const medicosDaClinica = () => db.config.medicos.map((m) => ({ ...m }));
 export const nomeDaClinica = () => db.empresa.nome;
 
 export const usuarioPor = (id) => db.usuarios.find((u) => u.id === id);
+/**
+ * Quem entrou pelo login passa a existir entre os usuários da demonstração, para o nome aparecer
+ * nas ações e nas filas. Em produção isto some: a pessoa já é uma linha de `perfis`.
+ */
+export function registrarUsuarioDaSessao(p) {
+  if (!p?.id || usuarioPor(p.id)) return;
+  db.usuarios.push({ id: p.id, nome: p.nome, papeis: [p.papel], cargo: p.cargo || '', email: p.email || '', ativo: true });
+}
 export const nomeDe = (id) => usuarioPor(id)?.nome || '—';
 /** Só gente ativa: um usuário desativado não recebe trabalho novo, mas continua no histórico. */
 export const equipeDoPapel = (papel) => db.usuarios.filter((u) => u.ativo !== false && u.papeis.includes(papel));

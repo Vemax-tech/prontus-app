@@ -102,13 +102,13 @@
 }
 .avisos .af p { margin: 0; flex: 1; }
 
-/* Quem sou eu agora: na demonstração é um seletor; em produção vira o nome de quem entrou. */
+/* Quem sou eu agora: o nome de quem entrou, o cargo e o botão de sair. */
 .tools { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
 .whoami { display: flex; align-items: center; gap: 10px; padding-left: 14px; margin-left: 4px; border-left: 1px solid var(--line); }
 .whoami .t { display: grid; line-height: 1.25; text-align: right; }
 .whoami .t b { font-size: .8125rem; }
 .whoami .t span { font-size: .75rem; color: var(--ink-3); }
-.whoami select { width: auto; min-height: 32px; font-size: .8125rem; max-width: 190px; }
+.whoami .sair { flex: none; gap: 6px; }
 .avatar {
   width: 32px; height: 32px; border-radius: 50%; flex: none;
   display: grid; place-items: center; background: var(--wash); border: 1px solid var(--wash-2);
@@ -465,7 +465,7 @@ tbody tr.off td b { font-weight: 500; }
 @media (max-width: 1640px) { .mark em { display: none; } }
 @media (max-width: 1480px) { .whoami .t { display: none; } }
 @media (max-width: 1400px) { .top { gap: 14px; } .navi { padding: 0 9px; gap: 6px; } .navsep { margin: 0 3px; } }
-@media (max-width: 1340px) { .navi { padding: 0 7px; } .whoami { padding-left: 10px; } .whoami .avatar { display: none; } .whoami select { max-width: 150px; } }
+@media (max-width: 1340px) { .navi { padding: 0 7px; } .whoami { padding-left: 10px; } .whoami .avatar { display: none; } }
 
 /* ---------------------------------------------------------------- menu em tela estreita */
 @media (max-width: 1270px) {
@@ -509,7 +509,8 @@ tbody tr.off td b { font-weight: 500; }
   .tools > .tema, .tools > .cfg { display: none; }
   .navextra { display: grid; gap: 2px; }
   .whoami { border-left: 0; padding-left: 0; }
-  .whoami select { max-width: 116px; }
+  .whoami .sair-rotulo { display: none; }
+  .whoami .sair { width: var(--h-ctl-sm); padding: 0; }
   .mark span { font-size: 1.3125rem; }
 }
 @media (max-width: 340px) { .mark span { display: none; } }
@@ -545,3 +546,26 @@ tbody tr.off td b { font-weight: 500; }
   h1, h2, h3, b, .stat b, td a.t { color: #000; }
   .eyebrow, th, .k { color: #333; }
 }
+
+/* ---------------------------------------------------------------------------
+   TELA DE ENTRADA. Mesma identidade das demais: marca em serifa, painel de superfície,
+   campos e botão primário dos tokens. Uma coluna só, do celular ao monitor da recepção.
+   --------------------------------------------------------------------------- */
+.login { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px var(--gutter); background: var(--paper); }
+.login-box { width: 100%; max-width: 400px; }
+.login-box .mark { justify-content: center; margin-bottom: 22px; }
+.login-box .mark span { font-size: 2rem; }
+.login-box .mark .i { width: 30px; height: 30px; }
+.login-card { padding: 26px; }
+.login-card h1 { margin: 0 0 4px; font-size: 1.25rem; }
+.login-card .lead { margin: 0 0 6px; color: var(--ink-3); font-size: .875rem; }
+.login-card label:first-of-type { margin-top: 18px; }
+.senha-linha { position: relative; }
+.senha-linha input { padding-right: 46px; }
+.senha-linha .ver { position: absolute; top: 0; right: 0; height: 100%; width: 44px; display: grid; place-items: center; background: none; border: 0; color: var(--ink-3); cursor: pointer; border-radius: var(--r-1); }
+.senha-linha .ver:hover { color: var(--ink); }
+.login-card .err { margin: 14px 0 0; padding: 10px 12px; background: var(--crit-wash); border: 1px solid var(--crit-line); border-radius: var(--r-1); }
+.login-card .info { margin: 14px 0 0; padding: 10px 12px; background: var(--wash); border: 1px solid var(--wash-2); border-radius: var(--r-1); font-size: .8125rem; color: var(--ink-2); }
+.login-card .btn.primary { width: 100%; margin-top: 20px; min-height: 44px; }
+.login-card .btn.primary[data-ocupado] { opacity: .7; cursor: progress; }
+.login-ajuda { margin: 16px 0 0; text-align: center; }

@@ -4,10 +4,11 @@
 // e entrega às telas um contexto (ctx) com quem é o usuário e o que ele pode. As peças de interface
 // genéricas vêm de ./base/ (sem conhecimento de domínio); o que é identidade do Prontus está aqui
 // e no CSS de css/.
-import { copyText, criarIcon, criarRun, empty as emptyBase, h, toast } from './base/dom.js';
-import { papelAtual, definirPapel, papeisAtuais, atorAtual, PAPEIS } from './papel.js';
+import { botaoOcupado, copyText, criarIcon, criarRun, empty as emptyBase, h, toast } from './base/dom.js';
+import { papelAtual, papeisAtuais, atorAtual, PAPEIS } from './papel.js';
+import { sair, perfilAtual } from './auth.js';
 import { pode, podeCompleto, PAPEL_RESUMO } from './permissoes.js';
-import { nomeDe, usuarioPor, reiniciar, avisosDoPapel, marcarAvisosLidos, escalonarAtrasos } from './dados.js';
+import { nomeDe, usuarioPor, registrarUsuarioDaSessao, reiniciar, avisosDoPapel, marcarAvisosLidos, escalonarAtrasos } from './dados.js';
 import * as Navegador from './avisos-navegador.js';
 import { dadosDasFilas, contarFilas } from './filas.js';
 import { temaAtual, alternarTema, TEMAS } from './tema.js';
@@ -23,6 +24,7 @@ const ROOT = new URL('../', import.meta.url).href;
 // Ícones (Lucide). Conteúdo fixo, escrito aqui — nunca vindo de dado do usuário.
 const ICONS = {
   marca: MONOGRAMA,
+  sair: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
   home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/>',
   inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
@@ -326,13 +328,9 @@ function quemSouEu() {
   return h('div', { class: 'whoami' },
     h('span', { class: 'avatar', 'aria-hidden': 'true' }, iniciais),
     h('span', { class: 't' }, h('b', {}, u?.nome || '—'), h('span', {}, u?.cargo || PAPEIS[atual])),
-    h('select', {
-      'aria-label': 'Papel em uso na demonstração',
-      // Trocar de papel LEVA À TELA INICIAL do papel novo, em vez de recarregar a atual. Cada papel
-      // enxerga um conjunto diferente de telas, e recarregar no mesmo endereço entregava um "Sem
-      // acesso" a quem só quis ver o sistema pelos olhos de outra equipe.
-      onchange: (e) => { definirPapel(e.target.value); location.assign(ROOT); },
-    }, Object.entries(PAPEIS).map(([k, v]) => h('option', { value: k, selected: k === atual }, v))));
+    botaoOcupado([icon('sair'), h('span', { class: 'sair-rotulo' }, 'Sair')], () => sair('saiu'), {
+      class: 'btn sm sair', 'aria-label': `Sair do sistema (${u?.nome || PAPEIS[atual]})`, title: 'Sair do sistema',
+    }));
 }
 
 /**
@@ -343,6 +341,9 @@ function quemSouEu() {
 export async function start(key, title, render) {
   const app = document.getElementById('app');
   const papeis = papeisAtuais(), ator = atorAtual();
+  // Sem papel não há tela: a guarda de boot.js já manda para o login, isto cobre quem chegar aqui por outro caminho.
+  if (!papeis.length) { await sair(); return; }
+  registrarUsuarioDaSessao(perfilAtual());
   const ctx = {
     papeis, ator, nome: nomeDe(ator), usuario: usuarioPor(ator),
     pode: (recurso, acao = 'ver') => pode(papeis, recurso, acao),
