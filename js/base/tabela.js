@@ -12,18 +12,35 @@ export function dataTable({ cols, rows, state, size = 20, onState, vazio, rowCla
   const pages = Math.max(1, Math.ceil(sorted.length / size));
   state.page = Math.min(state.page || 0, pages - 1);
   const slice = sorted.slice(state.page * size, state.page * size + size);
-  const th = (c) => h('th', { 'aria-sort': c.key === state.sort ? (state.dir > 0 ? 'ascending' : 'descending') : null },
-    c.sort ? h('button', { class: 'thbtn', onclick: () => { state.dir = state.sort === c.key ? -state.dir : 1; state.sort = c.key; state.page = 0; onState(); } }, c.label, c.key === state.sort ? (state.dir > 0 ? ' ▲' : ' ▼') : '') : c.label);
+  const th = (c) => h('th', {
+    role: 'columnheader', scope: 'col', 'data-ordena': c.sort ? '' : null,
+    'aria-sort': c.key === state.sort ? (state.dir > 0 ? 'ascending' : 'descending') : null,
+  }, c.sort ? h('button', { class: 'thbtn', type: 'button', onclick: () => { state.dir = state.sort === c.key ? -state.dir : 1; state.sort = c.key; state.page = 0; onState(); } },
+    c.label, c.key === state.sort ? h('span', { 'aria-hidden': 'true' }, state.dir > 0 ? '▲' : '▼') : null) : c.label);
   if (!rows.length) return vazio;
+  // Em tela estreita a tabela vira uma lista de cartões (css/base.css, `.tw.cartoes`). O rótulo de
+  // cada célula sai do próprio cabeçalho, por data-label; os papéis ARIA explícitos seguram a
+  // leitura de tabela quando o CSS troca o `display` — sem eles o leitor de tela a perderia.
   return h('div', {},
-    h('div', { class: 'tw' }, h('table', {}, h('thead', {}, h('tr', {}, cols.map(th))),
-      h('tbody', {}, slice.map((r) => h('tr', { class: rowClass?.(r) || null }, cols.map((c) => h('td', {}, c.render(r)))))))),
+    h('div', { class: 'tw cartoes' }, h('table', { role: 'table' }, h('thead', { role: 'rowgroup' }, h('tr', { role: 'row' }, cols.map(th))),
+      h('tbody', { role: 'rowgroup' }, slice.map((r) => h('tr', { role: 'row', class: rowClass?.(r) || null },
+        cols.map((c) => celula(c, r))))))),
     sorted.length > size && h('div', { class: 'row between pager' },
       h('span', { class: 'small muted' }, `${state.page * size + 1}–${Math.min(sorted.length, state.page * size + size)} de ${sorted.length}`),
       h('div', { class: 'row' },
         h('button', { class: 'btn sm', disabled: state.page === 0, onclick: () => { state.page--; onState(); } }, 'Anterior'),
         h('span', { class: 'small' }, `Página ${state.page + 1} de ${pages}`),
         h('button', { class: 'btn sm', disabled: state.page >= pages - 1, onclick: () => { state.page++; onState(); } }, 'Próxima'))));
+}
+
+// Célula que não diz nada — "—", "não se aplica", vazia — ganha `vazia`: no cartão do celular ela
+// some, e o cartão mostra só o que o caso tem. Na tabela larga continua, porque lá a coluna precisa
+// da célula para alinhar.
+const SEM_VALOR = new Set(['', '—', 'não se aplica', 'nenhuma']);
+function celula(c, r) {
+  const td = h('td', { role: 'cell', 'data-label': c.label }, c.render(r));
+  if (SEM_VALOR.has(td.textContent.trim())) td.classList.add('vazia');
+  return td;
 }
 
 // ---------------------------------------------------------------- CSV
@@ -35,10 +52,32 @@ export function baixarCsv(nome, colunas, linhas) {
 
 // ---------------------------------------------------------------- filtros
 /** Barra de filtros simples: defs = [{tipo:'busca'|'select', chave, placeholder?, rotulo?, opcoes?}]; f é mutado e onChange() redesenha. */
+//
+// Com três ou mais seletores a barra RECOLHE em tela estreita: fica a busca e um botão "Filtros"
+// com o número de filtros em uso. Sete seletores empilhados empurravam a lista para baixo da dobra
+// no celular — a pessoa via os filtros e não via o que eles filtravam.
 export function filtros(defs, f, onChange) {
-  return h('div', { class: 'toolbar' }, defs.map((d) => d.tipo === 'busca'
+  const selects = defs.filter((d) => d.tipo !== 'busca');
+  const recolhe = selects.length >= 3;
+  const pino = h('span', { class: 'pill' });
+  const contar = () => {
+    const n = selects.filter((d) => String(f[d.chave] ?? '') !== '').length;
+    pino.textContent = String(n); pino.hidden = !n;
+    if (tgl) tgl.setAttribute('aria-label', n ? `Filtros, ${n} em uso` : 'Filtros');
+  };
+  const mudou = () => { contar(); onChange(); };
+  const bar = h('div', { class: 'toolbar' + (recolhe ? ' recolhe' : '') });
+  const tgl = recolhe && h('button', {
+    class: 'btn tgl', type: 'button', 'aria-expanded': 'false',
+    onclick: (e) => { const o = bar.classList.toggle('aberta'); e.currentTarget.setAttribute('aria-expanded', String(o)); },
+  }, 'Filtros', pino);
+  bar.append(defs.map((d) => d.tipo === 'busca'
     ? h('input', { type: 'search', placeholder: d.placeholder || 'Buscar…', 'aria-label': d.placeholder || 'Buscar', value: f[d.chave] || '', oninput: (e) => { f[d.chave] = e.target.value; onChange(); } })
-    : h('select', { 'aria-label': d.rotulo, onchange: (e) => { f[d.chave] = e.target.value; onChange(); } },
+    : h('select', { 'aria-label': d.rotulo, onchange: (e) => { f[d.chave] = e.target.value; mudou(); } },
       h('option', { value: '' }, d.rotulo), d.opcoes.map(([v, l]) => h('option', { value: v, selected: String(f[d.chave] ?? '') === String(v) }, l)))));
+  // O botão entra logo depois da busca, para os dois dividirem a mesma linha no celular.
+  if (tgl) { const busca = bar.querySelector('input[type="search"]'); if (busca) busca.after(tgl); else bar.prepend(tgl); }
+  contar();
+  return bar;
 }
 export const contem = (campos, q) => !q || campos.join(' ').toLowerCase().includes(q.toLowerCase());

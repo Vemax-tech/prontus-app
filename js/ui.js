@@ -170,7 +170,8 @@ const faixaDemo = () => h('div', { class: 'demo', role: 'note' },
   icon('alert'),
   h('span', {}, h('b', {}, 'Demonstração'), ' — dados fictícios em memória. Nada é salvo e nenhum paciente real existe aqui.'),
   h('span', { class: 'sep', 'aria-hidden': 'true' }, '|'),
-  h('span', {}, 'Em produção as regras e as permissões vivem no banco, não no navegador.'),
+  // A segunda frase sai em tela estreita (app.css): a faixa precisa caber numa linha.
+  h('span', { class: 'demo-2' }, 'Em produção as regras e as permissões vivem no banco, não no navegador.'),
   h('button', { class: 'linkbtn', onclick: async () => { await reiniciar(); location.reload(); } }, 'Reiniciar dados'));
 
 /**
@@ -181,19 +182,30 @@ const faixaDemo = () => h('div', { class: 'demo', role: 'note' },
  * Troca de tema. É um botão só, não um menu: são dois temas, e o ícone mostra para onde o clique
  * leva. A troca é imediata e não recarrega a página — nenhum estado se perde no caminho.
  */
-function botaoTema() {
+// Os botões de tema da página: o da barra e o da gaveta (celular). Trocar por um repinta os dois.
+const botoesTema = new Map();
+function botaoTema({ rotulo = false } = {}) {
   const pinta = (b) => {
     const claro = temaAtual() === 'claro';
     const vai = claro ? 'escuro' : 'claro';
-    b.replaceChildren(icon(claro ? 'lua' : 'sol'));
+    b.replaceChildren(icon(claro ? 'lua' : 'sol'), rotulo ? `Tema ${vai}` : null);
     b.setAttribute('aria-label', `Mudar para o tema ${vai}`);
     b.setAttribute('title', `Tema ${TEMAS[temaAtual()].toLowerCase()} — clique para o ${vai}`);
   };
   const b = h('button', {
-    class: 'btn icon tema', type: 'button',
-    onclick: (e) => { alternarTema(); pinta(e.currentTarget); },
+    class: rotulo ? 'navi tema' : 'btn icon tema', type: 'button',
+    onclick: () => {
+      // Sem transição durante a troca: senão cada botão atravessa um quadro com a cor do tema
+      // antigo e a barra pisca. Dois quadros depois, as transições voltam.
+      const raiz = document.documentElement;
+      raiz.classList.add('sem-transicao');
+      alternarTema();
+      botoesTema.forEach((p, x) => (x.isConnected ? p(x) : botoesTema.delete(x)));
+      requestAnimationFrame(() => requestAnimationFrame(() => raiz.classList.remove('sem-transicao')));
+    },
   });
   pinta(b);
+  botoesTema.set(b, pinta);
   return b;
 }
 
@@ -290,22 +302,44 @@ export async function start(key, title, render) {
       sep && h('span', { class: 'navsep', 'aria-hidden': 'true' }),
       h('a', { class: 'navi' + (p === key ? ' on' : ''), href: ROOT + p, 'aria-current': p === key ? 'page' : null },
         icon(ic), rot, contagem[p] ? h('span', { class: 'pill' }, String(contagem[p])) : null),
-    ]));
+    ]),
+    // Só aparece na gaveta do celular (app.css): na barra estreita, o tema cede o lugar à marca.
+    // O mesmo vale para Configurações, que na barra larga é a engrenagem ao lado do perfil.
+    h('div', { class: 'navextra' }, h('span', { class: 'navsep', 'aria-hidden': 'true' }),
+      ctx.pode('configuracoes')
+        ? h('a', { class: 'navi' + (key === 'configuracoes/' ? ' on' : ''), href: ROOT + 'configuracoes/', 'aria-current': key === 'configuracoes/' ? 'page' : null }, icon('engrenagem'), 'Configurações')
+        : null,
+      botaoTema({ rotulo: true })));
+  // Gaveta de navegação em tela estreita: abre pelo botão, fecha pelo botão, pelo véu e pelo Esc.
+  const scrim = h('div', { class: 'navscrim', 'aria-hidden': 'true', onclick: () => gaveta(false) });
   const burger = h('button', {
-    class: 'burger', 'aria-label': 'Abrir navegação', 'aria-expanded': 'false', 'aria-controls': 'nav',
-    onclick: (e) => { const o = nav.classList.toggle('open'); e.currentTarget.setAttribute('aria-expanded', String(o)); },
+    class: 'burger', type: 'button', 'aria-label': 'Abrir navegação', 'aria-expanded': 'false', 'aria-controls': 'nav',
+    onclick: () => gaveta(!nav.classList.contains('open')),
   }, icon('menu'));
+  function gaveta(abrir) {
+    nav.classList.toggle('open', abrir); scrim.classList.toggle('open', abrir);
+    burger.setAttribute('aria-expanded', String(abrir));
+    burger.setAttribute('aria-label', abrir ? 'Fechar navegação' : 'Abrir navegação');
+    if (abrir) nav.querySelector('.navi')?.focus();
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && nav.classList.contains('open') && !document.querySelector('.ov')) { gaveta(false); burger.focus(); }
+  });
 
-  const view = h('main', { class: 'wrap', id: 'view' });
+  const view = h('main', { class: 'wrap', id: 'view', tabindex: '-1' });
   app.replaceChildren(
+    // Move o foco sem trocar o hash: o detalhe do caso usa `#acao=` para abrir o formulário certo,
+    // e `#view` no lugar dele perderia isso num recarregamento.
+    h('a', { class: 'skip', href: '#view', onclick: (e) => { e.preventDefault(); view.focus(); } }, 'Pular para o conteúdo'),
     h('div', { class: 'topwrap' },
       h('header', { class: 'top' }, burger, assinatura(), nav, h('div', { class: 'tools' },
         sinoDeAvisos(ctx),
         ctx.pode('configuracoes')
-          ? h('a', { class: 'btn icon' + (key === 'configuracoes/' ? ' on' : ''), href: ROOT + 'configuracoes/', 'aria-label': 'Configurações da clínica', title: 'Configurações da clínica' }, icon('engrenagem'))
+          ? h('a', { class: 'btn icon cfg' + (key === 'configuracoes/' ? ' on' : ''), href: ROOT + 'configuracoes/', 'aria-label': 'Configurações da clínica', title: 'Configurações da clínica' }, icon('engrenagem'))
           : null,
         botaoTema(), quemSouEu())),
       faixaDemo()),
+    scrim,
     view);
   document.title = `${title} — ${MARCA.produto}`;
 
