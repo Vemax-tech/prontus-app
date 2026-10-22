@@ -11,3 +11,7 @@ wrangler.jsonc
 serve.json
 .assetsignore
 *.md
+supabase
+vemax-skills
+scripts
+.claude

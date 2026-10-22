@@ -31,11 +31,17 @@ const mod = (f) => import(pathToFileURL(path.join(REPO, 'js', f)).href);
 const F = await mod('fluxo.js');
 const P = await mod('permissoes.js');
 const D = await mod('dados.js');
-const papelMod = await mod('papel.js');
+const Auth = await mod('auth.js');
 
 const wait = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 const body = () => dom.window.document.getElementById('app').textContent;
-const trocarPapel = (p) => { papelMod.definirPapel(p); };
+// Entra como a pessoa do papel, sem rede: grava a sessão que o login gravaria. Os ids são os da
+// equipe semeada em js/dados.js, para os casos já "assumidos" por eles continuarem valendo.
+const DO_PAPEL = { callcenter: 'u-cc1', arquivo: 'u-ar1', recepcao: 'u-re1', admin: 'u-ad1' };
+const trocarPapel = (p) => {
+  const u = D.usuarioPor(DO_PAPEL[p]);
+  Auth.guardarSessao({ access_token: 't', refresh_token: 'r', expires_at: 9e9, perfil: { id: u.id, nome: u.nome, cargo: u.cargo, papel: p, email: u.email } });
+};
 const abrirTela = async (arquivo, fn = 'init', query = '') => {
   dom.window.document.getElementById('app').replaceChildren();
   dom.window.history.replaceState({}, '', '/' + query);

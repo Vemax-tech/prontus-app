@@ -8,13 +8,18 @@
 // é o que produz o clarão. O escuro é o padrão do CSS, então na prática isto só age para quem
 // escolheu o claro.
 import { aplicarTema } from './tema.js';
+import { exigirSessao } from './auth.js';
 
 aplicarTema();
 
 const tag = document.querySelector('script[data-modulo]');
 const modulo = tag?.dataset.modulo || '', fn = tag?.dataset.fn || '';
 if (/^[a-z]+$/.test(modulo) && /^(init|initFicha)$/.test(fn)) {
-  import(`./modules/${modulo}.js`).then((m) => m[fn]()).catch((e) => {
+  // Toda tela, menos a de entrada, só carrega com sessão válida: sem ela a pessoa vai para o login
+  // e volta para onde estava. A tela de login cuida sozinha de quem já entrou.
+  (modulo === 'login' ? Promise.resolve(true) : exigirSessao())
+    .then((liberado) => liberado && import(`./modules/${modulo}.js`).then((m) => m[fn]()))
+    .catch((e) => {
     console.error(e);
     document.getElementById('app')?.replaceChildren(Object.assign(document.createElement('p'), {
       textContent: 'Não foi possível carregar esta página. Recarregue; se continuar, avise o suporte.',
