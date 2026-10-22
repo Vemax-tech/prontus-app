@@ -3,7 +3,7 @@
 //   node supabase/local/preparar.mjs
 // Senha e segredo abaixo valem SÓ para esta stack local; nada disto vai para produção.
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { URL_LOCAL, SENHA_LOCAL, CONTAS, anonKey, servicoKey as servico } from './contas.mjs';
@@ -18,8 +18,11 @@ for (let i = 0; ; i++) {
   await new Promise((r) => setTimeout(r, 1500));
 }
 
-const mig = psql(null, readFileSync(path.join(AQUI, '../migrations/0001_perfis.sql'), 'utf8'));
-if (mig.status !== 0) throw new Error('migration falhou: ' + mig.stderr);
+// Todas as migrations, em ordem; cada uma é idempotente (create or replace / if not exists).
+for (const arq of readdirSync(path.join(AQUI, '../migrations')).filter((f) => f.endsWith('.sql')).sort()) {
+  const mig = psql(null, readFileSync(path.join(AQUI, '../migrations', arq), 'utf8'));
+  if (mig.status !== 0) throw new Error(`migration ${arq} falhou: ${mig.stderr}`);
+}
 
 for (const [email, nome, cargo, papel] of CONTAS) {
   const r = await fetch(`${URL_LOCAL}/auth/v1/admin/users`, {

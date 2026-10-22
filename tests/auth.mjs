@@ -6,7 +6,7 @@
 // Pré-requisito (uma vez):  cd supabase/local && docker compose up -d && cd ../.. && node supabase/local/preparar.mjs
 // Rodar:                    npm run test:auth
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { anonKey, CONTAS, SENHA_LOCAL, URL_LOCAL } from '../supabase/local/contas.mjs';
@@ -129,11 +129,35 @@ check(/login\//.test(destino || '') && !guardado(), 'token adulterado não passa
 
 // ================================================================ redirecionamento seguro
 console.log('\n## ?next= não vira redirecionamento aberto');
-for (const ruim of ['https://evil.example/', '//evil.example', 'javascript:alert(1)', '/login/', 'http://localhost:3005.evil.example/', '']) {
+for (const ruim of ['https://evil.example/', '//evil.example', 'javascript:alert(1)', '/login/', 'http://localhost:3005.evil.example/', '',
+  // o navegador normaliza estes para `//evil.example`, que SAI do site: a origem confere, o resultado não pode valer
+  '/.//evil.example/x', '/..//evil.example', '/%2e//evil.example', '/./\\evil.example', '/\\evil.example', '/\t/evil.example']) {
   const d = A.destinoSeguro(ruim);
   check(d === '/' , `recusa ${JSON.stringify(ruim)} → ${d}`);
 }
 check(A.destinoSeguro('/solicitacoes/detalhe.html?id=sol-0003') === '/solicitacoes/detalhe.html?id=sol-0003', 'aceita caminho do próprio app, com parâmetros');
+
+// ================================================================ concorrência
+console.log('\n## Último administrador, com duas alterações simultâneas');
+const psqlAsync = (sql) => new Promise((res) => {
+  const p = spawn('docker', ['exec', '-i', 'prontus-auth-db-1', 'psql', '-U', 'postgres', '-d', 'prontus', '-t', '-A', '-c', sql]);
+  let out = '', err = '';
+  p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
+  p.on('close', (c) => res({ c, out, err }));
+});
+const ID_ADM = psql(`select id from perfis where papel='admin' limit 1`);
+psql(`insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at) values ('00000000-0000-0000-0000-0000000000a2', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'admin2@prontus.local', now(), now()) on conflict do nothing`);
+psql(`insert into perfis (id, nome, papel) values ('00000000-0000-0000-0000-0000000000a2', 'Segundo Admin', 'admin') on conflict (id) do update set papel='admin', ativo=true`);
+// A primeira transação rebaixa um admin e segura a transação aberta; a segunda tenta rebaixar o outro.
+const [t1, t2] = await Promise.all([
+  psqlAsync(`begin; update perfis set ativo=false where id='${ID_ADM}'; select pg_sleep(2); commit;`),
+  new Promise((x) => setTimeout(x, 700)).then(() => psqlAsync(`update perfis set ativo=false where id='00000000-0000-0000-0000-0000000000a2'`)),
+]);
+const ativos = Number(psql(`select count(*) from perfis where papel='admin' and ativo`));
+check(ativos >= 1, `a clínica nunca fica sem administrador ativo (restaram ${ativos})`);
+check(t1.c === 0 && t2.c !== 0 && /administrador ativo/.test(t2.err), 'a segunda alteração espera a primeira e é recusada');
+psql(`update perfis set ativo=true where papel='admin'`);
+psql(`delete from auth.users where id='00000000-0000-0000-0000-0000000000a2'`);
 
 // ================================================================ a tela
 console.log('\n## Tela de login');

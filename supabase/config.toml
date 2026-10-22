@@ -1,0 +1,25 @@
+# Configuração do Auth do projeto Supabase HOSPEDADO. Aplique com `supabase config push` (CLI) ou
+# reproduza no painel em Authentication. Só entram aqui chaves confirmadas na documentação do
+# Supabase; a política de senha NÃO está aqui (ver "Fora deste arquivo" abaixo).
+
+[auth]
+# Sem cadastro aberto: as contas são criadas pela clínica. Com isto ligado, qualquer pessoa na
+# internet poderia criar uma conta e chegar ao ponto em que só o perfil (papel) a separa do sistema.
+enable_signup = false
+# Token de acesso curto: o app renova sozinho (js/auth.js), e um token roubado vale por menos tempo.
+jwt_expiry = 900
+# Cada renovação troca o refresh token; reusar um já trocado é sinal de cópia e derruba a sessão.
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+
+[auth.rate_limit]
+# Por IP, a cada 5 minutos. O padrão (30) deixa mais de 8 chutes de senha por minuto.
+sign_in_sign_ups = 10
+token_refresh = 150
+
+# Fora deste arquivo (painel → Authentication):
+#  · Política de senha: mínimo de 10 caracteres e exigir minúscula, maiúscula, número e símbolo.
+#    As chaves de `config.toml` para isso não estão na documentação consultada, então ficam no painel.
+#  · Proteção contra senha vazada (HaveIBeenPwned): exige plano Pro ou superior.
+#  · Duração máxima e inatividade da sessão (`[auth.sessions]`): dependem do plano; o app já encerra
+#    por inatividade em 30 min (js/auth.js).
