@@ -7,6 +7,8 @@ Sistema para clínica controlar dois atendimentos que hoje vivem em grupo de Wha
 1. **Dúvida ou correção na receita** — o paciente liga, alguém precisa achar o prontuário, o médico responde, alguém avisa o paciente.
 2. **Pedido de receita médica** — o mesmo caminho, mais a emissão e a entrega do documento.
 
+Quem usa o sistema são **quatro papéis**: Call Center, Arquivo, Recepção e Administrador. O **médico não é usuário** — ele continua no processo, mas pelo papel, como hoje. Ver [Quatro papéis, quatro fluxos](#quatro-papéis-quatro-fluxos).
+
 Junto com eles, o sistema controla a **custódia do prontuário físico** (onde está, com quem, desde quando) como uma trilha paralela: concluir o atendimento não é arquivar o prontuário, e o sistema não finge que é.
 
 ---
@@ -45,7 +47,7 @@ O roteiro de apresentação está em [`docs/roteiro-apresentacao.md`](docs/rotei
 ## Como está organizado
 
 ```
-index.html  filas/  minhafila/  solicitacoes/  prontuarios/  registros/  relatorios/  permissoes/  configuracoes/
+index.html  filas/  minhafila/  solicitacoes/  prontuarios/  registros/  relatorios/  usuarios/  permissoes/  configuracoes/
 css/     tokens.css (identidade)  base.css (primitivas)  app.css (casca e telas)
 js/      marca.js   nome do produto, num lugar só
          fluxo.js   máquina de estados dos dois fluxos — puro, testável
@@ -69,6 +71,40 @@ scripts/verificar.mjs  scripts/cores.mjs  tests/telas.mjs
 `js/dados.js` guarda tudo em memória e devolve `{ data, error }` como um cliente de banco de verdade, de propósito: as telas usam o mesmo `run()` e **não mudam** quando a origem virar o Postgres. As funções (`moverSolicitacao`, `moverProntuario`, `registrarAvaliacao`…) são o espelho das funções que vão existir no banco.
 
 `js/fluxo.js` e `js/permissoes.js` são puros e espelham o que vai para o SQL. O cabeçalho de cada um diz, em letras garrafais, o que esta demonstração **não** é: regra que só existe no navegador não é regra. Em produção a tabela de transições, a matriz de permissões e a verificação vivem no banco, que recusa com o código `42501` — o navegador só evita mostrar botão que não funcionaria.
+
+---
+
+## Quatro papéis, quatro fluxos
+
+Cada papel é um fluxo de trabalho diferente, e a interface inteira obedece a isso: a barra de navegação, a tela inicial, as filas e os botões saem todos da matriz de `js/permissoes.js`. Ninguém precisa aprender a ignorar menu.
+
+| Papel | O que faz | O que vê ao entrar |
+|---|---|---|
+| **Call Center** | Abre o pedido do paciente e fecha o contato no fim. | "A sua vez": as filas dele, o que ele assumiu, o que passou da meta na etapa dele. |
+| **Arquivo** | Localiza, entrega e arquiva o prontuário físico. | O mesmo formato, com as filas de custódia. Sem relatório, sem administração. |
+| **Recepção** | A ponte com o consultório: recebe o prontuário, leva o caso ao médico e **registra o retorno dele**. | O mesmo formato. É o único papel que lê conteúdo clínico. |
+| **Administrador** | Cria e desativa pessoas, define as regras da clínica, tira relatórios, acompanha tudo. | O painel inteiro: todos os indicadores, equipe, tempos, auditoria. **Não tem fila.** |
+
+**O Administrador não tem fila de propósito.** Dar fila a quem coordena mistura quem cobra com quem é cobrado; ele acompanha pela Visão geral, pela lista de solicitações e pelos relatórios. E, apesar de ser o super usuário, **não lê conteúdo clínico**: coordenar não é motivo clínico.
+
+### O médico saiu do sistema — e continua no processo
+
+O médico **não entra, não tem fila e não tem senha**. O que acontece é o que já acontece hoje: a Recepção imprime a ficha do caso, leva ao consultório junto do prontuário, e volta com a resposta.
+
+O que mudou no sistema:
+
+- a etapa chama-se **"Com o médico"** — ela descreve onde o caso **está**, não quem vai clicar. Nos dois lados dela quem age é a Recepção;
+- ao levar, a Recepção diz **a quem** levou, escolhendo da lista de médicos da clínica (mantida pela administração em **Configurações**). Sem isso o sistema não saberia com quem o caso está;
+- ao voltar, a Recepção transcreve a decisão, e o registro sai **assinado duas vezes**: nome e CRM de quem decidiu, mais o id de quem digitou. É o que permite à auditoria responder tanto "quem decidiu" quanto "quem registrou";
+- a meta de **2 h com o médico**, que veio do plano, continua valendo e medindo exatamente a mesma coisa: o caso saiu da Recepção e ainda não voltou.
+
+### Usuários
+
+A tela **Usuários** é só do Administrador, e é a razão de o papel existir: dar e tirar acesso sem abrir chamado com o fornecedor. Três regras moldam a parte difícil:
+
+1. **Um papel por pessoa** — é o papel que decide quais telas ela vê e qual fila é dela.
+2. **Quem já agiu é desativado, não apagado.** Apagar o id de quem assumiu um caso deixaria "—" no lugar da autoria, e a linha do tempo de um registro de saúde não pode perder isso. Só quem nunca agiu some de verdade — e a tela diz, depois do clique, qual dos dois aconteceu.
+3. **Ninguém fica sem administrador.** Rebaixar ou desativar o último admin trancaria a clínica para fora da própria administração: a camada de dados recusa.
 
 ---
 
@@ -170,7 +206,7 @@ Os códigos `RN-xx`, `RF-xx`, `T-xx` e `C-xx` citados nos comentários do códig
 
 **Essa especificação não está neste repositório.** Quando for incorporada, o lugar dela é `docs/`. Até lá, a referência executável das regras é o próprio código: `js/fluxo.js` (transições e condições) e `js/permissoes.js` (matriz).
 
-O que falta para ir ao ar é a parte que não dá para demonstrar: as mesmas regras reescritas no banco, onde não podem ser burladas; login com segundo fator; armazenamento privado dos documentos com endereço assinado e auditoria de leitura; backup testado. E sete decisões que só a clínica pode tomar — entre elas as metas de prazo por etapa, que é por isso que o sistema mostra "tempo parado" e **não** inventa um indicador de "atrasada".
+O que falta para ir ao ar é a parte que não dá para demonstrar: as mesmas regras reescritas no banco, onde não podem ser burladas; login com segundo fator; armazenamento privado dos documentos com endereço assinado e auditoria de leitura; backup testado. E as decisões que só a clínica pode tomar — entre elas as metas de prazo por etapa, que o sistema já sabe cobrar mas se recusa a inventar: campo vazio em **Configurações** desliga o alerta daquela etapa.
 
 ---
 
@@ -179,16 +215,18 @@ O que falta para ir ao ar é a parte que não dá para demonstrar: as mesmas reg
 O sistema trata dado de saúde (LGPD art. 11). A clínica é controladora; quem fornece e opera o sistema é operadora. Consequências que já estão no desenho:
 
 - a matriz de permissões separa **saber que existe um retorno** de **ler o conteúdo clínico**: o Call Center acompanha e comunica sem acessar o texto da avaliação;
-- o administrador **não** ganha acesso clínico por ser administrador;
-- o suporte técnico do fornecedor não vê dado clínico por padrão;
-- a auditoria registra **leitura**, não só alteração;
+- **só a Recepção lê o conteúdo clínico** — e é ela quem o registra. Quem transcreve precisa ler; mais ninguém precisa;
+- o Administrador **não** ganha acesso clínico por administrar, mesmo sendo o super usuário;
+- a auditoria registra **leitura**, não só alteração, e guarda quem decidiu e quem transcreveu separadamente;
 - em produção, nada de cache compartilhado, nada de indexação, nada de `Referer` para fora — já está no `_headers`.
 
 ---
 
 ## Produto e fornecedor
 
-Prontus é um produto próprio, com marca, repositório, deploy e identidade próprios. A VEMAX é quem o fornece, vende e dá suporte — o papel "Suporte técnico" na matriz de permissões é dela. Trocar essa relação é editar `js/marca.js`.
+Prontus é um produto próprio, com marca, repositório, deploy e identidade próprios. A VEMAX é quem o fornece, vende e dá suporte. Trocar essa relação é editar `js/marca.js`.
+
+O acesso do fornecedor **não** é um papel dentro da clínica. Quando o suporte precisar ver um caso, isso será uma concessão temporária, nominal, com prazo e motivo, dada pela clínica — não uma linha permanente na matriz de permissões.
 
 ---
 

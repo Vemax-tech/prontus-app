@@ -29,17 +29,16 @@ export function filasDoPapel(papel, D) {
   const ab = D.sols.filter(F.aberta);
   const etapa = (...e) => ab.filter((s) => e.includes(s.etapa));
   const movs = (s) => D.movimentos.filter((m) => m.solicitacao_id === s.id).map((m) => m.tipo);
-  const docEmitido = (s) => D.documentos.some((x) => x.solicitacao_id === s.id && x.estado === 'emitido');
   const entrega = (s) => D.entregas.find((e) => e.solicitacao_id === s.id);
 
   const porPapel = {
     callcenter: [
       ['Novas solicitações', 'Registradas e ainda sem pedido de prontuário', etapa('aberta', 'em_triagem')],
-      ['Casos em andamento', 'Já com a equipe, aguardando outra etapa', etapa('aguardando_prontuario', 'prontuario_em_transito', 'prontuario_na_recepcao', 'aguardando_medico')],
+      ['Casos em andamento', 'Já com a equipe, aguardando outra etapa', etapa('aguardando_prontuario', 'prontuario_em_transito', 'prontuario_na_recepcao', 'com_medico')],
       ['Respostas recebidas a conferir', 'Retorno do médico publicado no grupo', etapa('aguardando_contato_paciente').filter((s) => !D.comunicacoes.some((c) => c.solicitacao_id === s.id && c.tipo === 'conferencia'))],
       ['Pacientes a contatar', 'Precisam ser avisados do retorno ou da receita', etapa('aguardando_contato_paciente')],
       ['Entregas a confirmar', 'Envio tentado ou retirada orientada, sem confirmação', etapa('aguardando_entrega').filter((s) => { const e = entrega(s); return e && !F.ENTREGA_TERMINAL.includes(e.estado); })],
-      ['Esclarecimentos pedidos pelo médico', 'O médico precisa de mais informação', etapa('aguardando_esclarecimento')],
+      ['Esclarecimentos pedidos pelo médico', 'O médico precisa de mais informação para decidir', etapa('aguardando_esclarecimento')],
     ],
     arquivo: [
       ['Prontuários para localizar', 'Pedido publicado, ainda não encontrado', etapa('aguardando_prontuario').filter((s) => !movs(s).includes('localizado'))],
@@ -49,24 +48,20 @@ export function filasDoPapel(papel, D) {
       ['Arquivamentos pendentes', 'Devolução recebida, falta arquivar', D.pronts.filter((p) => p.local === 'arquivo' && p.solicitacao_id)],
       ['Não localizados', 'Precisam de tratativa com o Call Center', D.pronts.filter((p) => p.local === 'nao_localizado')],
     ],
+    // A Recepção é a ponte com o consultório: as duas filas que o médico tinha viraram filas dela,
+    // porque o trabalho que sobrou do lado de cá é ir buscar a resposta e transcrevê-la.
     recepcao: [
       ['Prontuários a confirmar', 'O arquivo entregou, falta você confirmar o recebimento', etapa('prontuario_em_transito')],
-      ['Conferir e encaminhar ao médico', 'Prontuário em mãos', etapa('prontuario_na_recepcao')],
-      ['Respostas e receitas a receber', 'O médico registrou; avise o grupo', etapa('retorno_disponivel')],
+      ['Conferir e levar ao médico', 'Prontuário em mãos, falta levar', etapa('prontuario_na_recepcao')],
+      ['Respostas a buscar com o médico', 'O caso está com ele; traga a resposta e registre', etapa('com_medico')],
+      ['Esclarecimentos pedidos pelo médico', 'Ele pediu mais informação antes de decidir', etapa('aguardando_esclarecimento')],
+      ['Retornos a avisar no grupo', 'Já registrados; falta avisar quem vai ligar', etapa('retorno_disponivel')],
       ['Devoluções pendentes', 'Prontuário com você ou com o médico', D.pronts.filter((p) => ['recepcao', 'com_medico'].includes(p.local))],
       ['Retiradas físicas a confirmar', 'Paciente orientado a retirar na clínica', etapa('aguardando_entrega').filter((s) => { const e = entrega(s); return e?.modo === 'fisica' && e.estado !== 'retirada_confirmada'; })],
     ],
-    medico: [
-      ['Casos encaminhados para avaliação', 'Aguardando a sua análise', etapa('aguardando_medico')],
-      ['Casos que precisam de esclarecimento', 'Você pediu informação e ainda não voltou', etapa('aguardando_esclarecimento')],
-      ['Receitas emitidas aguardando a Recepção', 'Já decididas, seguindo o fluxo', etapa('retorno_disponivel').filter(docEmitido)],
-    ],
-    admin_empresa: [
-      ['Tudo em aberto', 'Visão de coordenação', ab],
-      ['Prontuários fora do arquivo', 'Pendência administrativa', D.pronts.filter((p) => p.local !== 'arquivo')],
-      ['Entregas sem confirmação', 'Risco de caso parado', D.entregas.filter((e) => !F.ENTREGA_TERMINAL.includes(e.estado) && e.estado !== 'nao_aplicavel')],
-    ],
-    admin_tecnico: [['Nada operacional', 'O suporte técnico não participa do fluxo de atendimento', []]],
+    // O Administrador NÃO tem fila: ele acompanha, não executa. Dar fila a quem cobra mistura os
+    // dois lados — a visão dele é a Visão geral, a lista de solicitações e os relatórios.
+    admin: [],
   };
   return (porPapel[papel] || []).map(([titulo, dica, itens]) => ({ titulo, dica, itens }));
 }

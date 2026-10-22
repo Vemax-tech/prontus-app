@@ -9,7 +9,7 @@
 import * as F from '../fluxo.js';
 import {
   dossie, moverSolicitacao, moverProntuario, registrarComunicacao, registrarAvaliacao,
-  registrarEntrega, concluirTarefa, auditarLeitura, nomeDe,
+  registrarEntrega, concluirTarefa, auditarLeitura, nomeDe, medicosDaClinica,
   assumirSolicitacao, liberarSolicitacao,
 } from '../dados.js';
 import {
@@ -26,8 +26,8 @@ const painel = (titulo, extra, ...corpo) => h('section', { class: 'panel' },
   h('div', { class: 'pb' }, corpo));
 /** Etapas que a trilha desenha, na ordem, por tipo de fluxo. */
 const TRILHA = {
-  duvida_correcao: ['aberta', 'aguardando_prontuario', 'prontuario_em_transito', 'prontuario_na_recepcao', 'aguardando_medico', 'retorno_disponivel', 'aguardando_contato_paciente', 'concluida'],
-  pedido_receita: ['aberta', 'aguardando_prontuario', 'prontuario_em_transito', 'prontuario_na_recepcao', 'aguardando_medico', 'retorno_disponivel', 'aguardando_contato_paciente', 'aguardando_entrega', 'concluida'],
+  duvida_correcao: ['aberta', 'aguardando_prontuario', 'prontuario_em_transito', 'prontuario_na_recepcao', 'com_medico', 'retorno_disponivel', 'aguardando_contato_paciente', 'concluida'],
+  pedido_receita: ['aberta', 'aguardando_prontuario', 'prontuario_em_transito', 'prontuario_na_recepcao', 'com_medico', 'retorno_disponivel', 'aguardando_contato_paciente', 'aguardando_entrega', 'concluida'],
 };
 
 export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ctx, view) => {
@@ -46,7 +46,7 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
 
   // ---------------------------------------------------------------- ações da solicitação
   function acoesSolicitacao() {
-    const trans = F.transicoesDe(d.sol, ctx.papeis, ctx.ator);
+    const trans = F.transicoesDe(d.sol, ctx.papeis);
     const assumir = botaoDePosse();
     if (!trans.length) {
       return h('div', { class: 'acts' }, assumir || h('p', { class: 'small muted' }, F.aberta(d.sol)
@@ -66,8 +66,7 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
   function botaoDePosse() {
     if (!F.aberta(d.sol)) return null;
     const daVez = F.papeisDaEtapa(d.sol).some((p) => ctx.papeis.includes(p));
-    const outroMedico = ctx.papeis.includes('medico') && d.sol.medico_id && d.sol.medico_id !== ctx.ator;
-    if (!daVez || outroMedico) return null;
+    if (!daVez) return null;
     if (!d.sol.assumido_por) {
       return h('button', {
         class: 'btn primary',
@@ -102,6 +101,9 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
       if (!c) return;
       return agir(moverSolicitacao({ id, transicao: t.id, papeis: ctx.papeis, ator: ctx.ator }), 'Pedido registrado. O arquivo já vê na fila dele.');
     }
+    // T06: o caso sai do sistema. Antes de sair, o sistema pergunta para onde — sem isso ele não
+    // sabe com quem o caso está nem com que assinatura o retorno vai voltar.
+    if (t.exigeMedico) return levarAoMedico(t);
     // T07: o retorno do médico é a decisão clínica. Formulário próprio.
     if (t.id === 'T07') return registrarRetorno();
     // T12: paciente avisado -> escolher como a receita chega.
@@ -150,33 +152,91 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
     formModal({ ...cfg, onSubmit: async (v) => { enviado = true; res(v); }, onClose: () => { if (!enviado) res(null); } });
   });
 
-  // ---------------------------------------------------------------- avaliação médica
+  // ---------------------------------------------------------------- o caso sai e volta do médico
+  //
+  // Estes dois formulários são as bordas do único trecho do processo que acontece FORA do sistema.
+  // O primeiro marca a saída e diz a quem o caso foi; o segundo transcreve o que voltou.
+
+  /** T06: a Recepção leva o caso impresso e o prontuário até a sala. Qual sala? */
+  function levarAoMedico(t) {
+    const medicos = medicosDaClinica();
+    formModal({
+      title: 'Levar o caso ao médico',
+      submitLabel: 'Registrar a saída',
+      fields: medicos.length
+        ? [{
+          name: 'medico_nome', label: 'A quem o caso foi levado', type: 'select',
+          value: d.sol.medico_nome || medicos[0].nome,
+          options: medicos.map((m) => [m.nome, `${m.nome} — ${m.especialidade || m.registro}`]),
+          hint: 'A lista é mantida pela administração em Configurações. O registro profissional vem junto e assina o retorno.',
+        }]
+        : [
+          { name: 'medico_nome', label: 'Nome do médico', required: true, maxlength: 80, value: d.sol.medico_nome || '' },
+          { name: 'medico_registro', label: 'Registro profissional (CRM)', required: true, maxlength: 40, value: d.sol.medico_registro || '', hint: 'A clínica ainda não cadastrou a lista de médicos em Configurações; digite desta vez.' },
+        ],
+      onSubmit: async (v) => {
+        const r = await agir(
+          moverSolicitacao({ id, transicao: t.id, papeis: ctx.papeis, ator: ctx.ator, ...v, nota: `Caso levado a ${v.medico_nome}, junto com o prontuário.` }),
+          `Caso com ${v.medico_nome}. Ele volta para a sua fila quando você registrar o retorno.`);
+        if (!r) return false;
+        // A pasta vai junto: é o mesmo gesto. As duas trilhas continuam independentes — o painel do
+        // prontuário segue mandando nela —, mas obrigar dois cliques para um gesto só é como a
+        // custódia passa a dizer "Na Recepção" com a pasta visivelmente na sala do médico.
+        await moverProntuarioJunto('encaminhado_medico', 'recepcao', `Levado a ${v.medico_nome}.`);
+      },
+    });
+  }
+
+  /**
+   * T07/T08/T14: a Recepção volta da sala e transcreve. A decisão é do médico — o formulário diz
+   * isso em letras —, e o registro sai assinado com o nome e o CRM de quem decidiu, mais o id de
+   * quem digitou. Duas pessoas na mesma linha: é o que faz a transcrição ser auditável.
+   */
   function registrarRetorno() {
     const receita = d.sol.tipo === 'pedido_receita';
     const opcoes = receita
-      ? [['receita_emitida', 'Receita emitida'], ['nao_aprovado', 'Pedido não aprovado'], ['precisa_esclarecimento', 'Preciso de mais informação']]
-      : [['respondido', 'Respondido (sem alterar a receita)'], ['corrigido', 'Receita corrigida (gera nova versão)'], ['precisa_esclarecimento', 'Preciso de mais informação']];
+      ? [['receita_emitida', 'Emitiu a receita'], ['nao_aprovado', 'Não aprovou o pedido'], ['precisa_esclarecimento', 'Pediu mais informação']]
+      : [['respondido', 'Respondeu (sem alterar a receita)'], ['corrigido', 'Corrigiu a receita (gera nova versão)'], ['precisa_esclarecimento', 'Pediu mais informação']];
+    const medico = d.sol.medico_nome || '';
     formModal({
-      title: 'Registrar a decisão clínica',
+      title: `Registrar o retorno${medico ? ' de ' + medico : ''}`,
       submitLabel: 'Registrar',
       fields: [
-        { name: 'desfecho', label: 'Decisão', type: 'select', value: opcoes[0][0], options: opcoes },
-        { name: 'conteudo_clinico', label: 'Conteúdo clínico', type: 'textarea', required: true, maxlength: 4000, hint: 'Visível só para quem tem permissão clínica. Não aparece para o Call Center nem para a administração.' },
-        { name: 'resumo_para_paciente', label: 'Resumo para repassar ao paciente', type: 'textarea', maxlength: 600, hint: 'Opcional. Serve para o Call Center comunicar sem acessar o conteúdo clínico.' },
+        { name: 'medico_nome', label: 'Quem decidiu', required: true, maxlength: 80, value: medico, hint: 'A decisão é do médico. Este registro é a transcrição dela, e fica assinado com o nome dele e o seu.' },
+        { name: 'medico_registro', label: 'Registro profissional (CRM)', required: true, maxlength: 40, value: d.sol.medico_registro || '' },
+        { name: 'desfecho', label: 'O que ele decidiu', type: 'select', value: opcoes[0][0], options: opcoes },
+        { name: 'conteudo_clinico', label: 'Conteúdo clínico', type: 'textarea', required: true, maxlength: 4000, hint: 'Visível só para a Recepção. Não aparece para o Call Center nem para a administração.' },
+        { name: 'resumo_para_paciente', label: 'Resumo para repassar ao paciente', type: 'textarea', maxlength: 600, hint: 'Opcional, mas é o que permite ao Call Center avisar o paciente sem ler o conteúdo clínico.' },
       ],
       onSubmit: async (v) => {
-        if (v.desfecho === 'precisa_esclarecimento') {
-          const a = await run(registrarAvaliacao({ solicitacao_id: id, ...v, papeis: ctx.papeis, ator: ctx.ator }));
-          if (!a) return false;
-          await agir(moverSolicitacao({ id, transicao: 'T08', papeis: ctx.papeis, ator: ctx.ator, nota: 'Médico pediu esclarecimento.' }), 'Pedido de esclarecimento registrado.');
-          return;
-        }
         const a = await run(registrarAvaliacao({ solicitacao_id: id, ...v, papeis: ctx.papeis, ator: ctx.ator }));
         if (!a) return false;
+        if (v.desfecho === 'precisa_esclarecimento') {
+          await agir(moverSolicitacao({ id, transicao: 'T08', papeis: ctx.papeis, ator: ctx.ator, nota: `${v.medico_nome} pediu esclarecimento.` }), 'Pedido de esclarecimento registrado.');
+          return;
+        }
         const trans = v.desfecho === 'nao_aprovado' ? 'T14' : 'T07';
-        await agir(moverSolicitacao({ id, transicao: trans, papeis: ctx.papeis, ator: ctx.ator, nota: v.desfecho === 'nao_aprovado' ? 'Pedido não aprovado.' : 'Retorno registrado.' }), 'Decisão registrada.');
+        await agir(
+          moverSolicitacao({ id, transicao: trans, papeis: ctx.papeis, ator: ctx.ator, nota: v.desfecho === 'nao_aprovado' ? `${v.medico_nome} não aprovou o pedido.` : `Retorno de ${v.medico_nome} registrado.` }),
+          'Retorno registrado.');
+        // Quem volta da sala volta com a pasta na mão. Mesmo gesto, mesmo clique.
+        await moverProntuarioJunto('devolvido_medico', 'com_medico', 'Voltou do consultório junto com a resposta.');
       },
     });
+  }
+
+  /**
+   * Registra o movimento do prontuário que acompanha a saída e a volta do consultório — e só esses
+   * dois. `localEsperado` é a guarda: se a pasta não estiver onde o gesto pressupõe (alguém já
+   * registrou antes, ou ela seguiu outro caminho), nada acontece aqui e a trilha dela continua
+   * sendo conduzida pelo painel do prontuário, onde há espaço para explicar o que houve.
+   */
+  async function moverProntuarioJunto(mov, localEsperado, nota) {
+    if (d.prontuario?.local !== localEsperado) return;
+    const { error } = await moverProntuario({ prontuario_id: d.prontuario.id, mov, papeis: ctx.papeis, ator: ctx.ator, solicitacao_id: id, nota });
+    if (error) return;                       // silencioso de propósito: a etapa já andou e vale
+    await recarregar();
+    pintar();
   }
 
   // ---------------------------------------------------------------- trilha e próxima ação
@@ -196,11 +256,7 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
 
   function blocoProxima() {
     const p = F.proximaAcao(d.sol);
-    // RN-10: quando a próxima ação é do médico, ela é do médico DESTE caso — dizer "é você" a
-    // outro profissional prometeria uma ação que a tela, corretamente, não oferece.
-    const outroMedico = ctx.papeis.includes('medico') && d.sol.medico_id && d.sol.medico_id !== ctx.ator;
-    const meu = !outroMedico && p.papel
-      && (p.papel.includes(PAPEIS[ctx.papeis[0]]) || PAPEIS[ctx.papeis[0]] === p.papel);
+    const meu = p.papel && (p.papel.includes(PAPEIS[ctx.papeis[0]]) || PAPEIS[ctx.papeis[0]] === p.papel);
     const fim = !F.aberta(d.sol);
     return h('div', { class: 'next' + (fim ? ' done' : '') },
       h('div', {},
@@ -215,8 +271,8 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
             : meu ? h('span', { class: 'eu' }, ' — é você') : null),
         !fim && !d.sol.assumido_por && h('p', { class: 'small muted', style: 'margin-top:5px' },
           'Ninguém assumiu este caso ainda: ele está na Fila atual da equipe.'),
-        outroMedico && !fim && h('p', { class: 'small muted', style: 'margin-top:5px' },
-          `A decisão clínica deste caso é de ${nomeDe(d.sol.medico_id)}, a quem ele foi encaminhado.`),
+        d.sol.etapa === 'com_medico' && h('p', { class: 'small muted', style: 'margin-top:5px' },
+          `O caso está fisicamente com ${d.sol.medico_nome || 'o médico'}, fora do sistema. Ele volta quando a Recepção registrar o retorno.`),
         fim && F.prontuarioPendente(d.prontuario) && h('p', { class: 'small', style: 'color:var(--warn);margin-top:5px' },
           'Atendimento encerrado, mas o prontuário ainda não voltou ao arquivo. A pendência segue na fila do arquivo.')),
       acoesSolicitacao());
@@ -240,7 +296,9 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
         F.aberta(d.sol) && [h('dt', {}, 'Com quem está'), h('dd', {}, d.sol.assumido_por
           ? h('span', {}, nomeDe(d.sol.assumido_por), h('div', { class: 'micro muted' }, 'assumiu ' + desde(d.sol.assumido_em)))
           : h('span', { class: 'small muted' }, 'ninguém ainda'))],
-        d.sol.medico_id && [h('dt', {}, 'Médico'), h('dd', {}, nomeDe(d.sol.medico_id))],
+        d.sol.medico_nome && [h('dt', {}, 'Médico'), h('dd', {}, d.sol.medico_nome,
+          d.sol.medico_registro ? h('div', { class: 'micro muted' }, d.sol.medico_registro) : null,
+          h('div', { class: 'micro muted' }, 'não é usuário do sistema'))],
         d.sol.desfecho && [h('dt', {}, 'Desfecho'), h('dd', {}, F.DESFECHOS[d.sol.desfecho], d.sol.reaberturas ? h('div', { class: 'micro muted' }, `${d.sol.reaberturas} reabertura(s)`) : null)],
         d.sol.motivo && [h('dt', {}, 'Motivo'), h('dd', {}, d.sol.motivo)]),
       h('p', { class: 'eyebrow', style: 'margin-top:14px' }, 'Relato do paciente'),
@@ -299,7 +357,10 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
   function blocoClinico() {
     if (!d.avaliacoes.length) {
       return ctx.pode('avaliacao_existencia')
-        ? painel('Retorno do médico', badge('ainda não registrado', 'dim'), h('p', { class: 'small muted' }, 'O médico ainda não registrou a decisão deste caso.'))
+        ? painel('Retorno do médico', badge('ainda não registrado', 'dim'),
+          h('p', { class: 'small muted' }, d.sol.etapa === 'com_medico'
+            ? `O caso está com ${d.sol.medico_nome || 'o médico'}. A Recepção registra o retorno quando ele decidir.`
+            : 'Nada registrado ainda para este caso.'))
         : null;
     }
     const completo = ctx.podeCompleto('avaliacao_conteudo');
@@ -314,14 +375,16 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
         h('div', { class: 'row between' },
           badge(rotulo[a.desfecho] || a.desfecho, a.desfecho === 'nao_aprovado' ? 'crit' : 'ok'),
           h('span', { class: 'when' }, quando(a.criado_em))),
-        h('p', { class: 'micro muted', style: 'margin:5px 0 8px' }, nomeDe(a.medico_id), ' · ', a.registro_profissional),
+        h('p', { class: 'micro muted', style: 'margin:5px 0 8px' },
+          'Decidido por ', h('b', {}, a.medico_nome || '—'), ' · ', a.registro_profissional,
+          a.registrado_por ? h('span', {}, ' · transcrito por ', nomeDe(a.registrado_por)) : null),
         completo
           ? h('p', { style: 'white-space:pre-wrap' }, a.conteudo_clinico)
           : minimo
             ? h('div', {},
               a.resumo_para_paciente ? h('p', { style: 'white-space:pre-wrap' }, a.resumo_para_paciente) : null,
               nota('', 'O conteúdo clínico completo não é visível para o seu papel. Você vê o resumo autorizado.'))
-            : nota('', 'O conteúdo clínico não é visível para o Call Center. Para repassar a resposta por telefone, a saída é o médico escrever um "resumo para o paciente", separado do conteúdo clínico.'))));
+            : nota('', 'O conteúdo clínico não é visível para o Call Center. Para repassar a resposta por telefone, a saída é o "resumo para o paciente" que a Recepção escreve junto do registro, separado do conteúdo clínico.'))));
   }
 
   function blocoDocumentos() {
@@ -329,7 +392,10 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
     const podeAbrir = ctx.pode('documento_abrir');
     return painel('Documentos', h('span', { class: 'micro muted' }, `${d.documentos.length} versão(ões)`),
       h('ul', { class: 'ul-list' }, d.documentos.map((doc) => h('li', { class: 'row between' },
-        h('span', {}, h('b', {}, doc.nome), h('div', { class: 'micro muted' }, `versão ${doc.versao} · emitida por ${nomeDe(doc.emitido_por)} · ${quando(doc.criado_em)}`)),
+        h('span', {}, h('b', {}, doc.nome), h('div', { class: 'micro muted' },
+          `versão ${doc.versao} · emitida por ${doc.emitido_por || '—'}`
+          + (doc.registrado_por ? ` · registrada por ${nomeDe(doc.registrado_por)}` : '')
+          + ` · ${quando(doc.criado_em)}`)),
         h('span', { class: 'row' },
           badge(F.DOC_ESTADOS[doc.estado], doc.estado === 'emitido' ? 'ok' : 'dim'),
           podeAbrir
@@ -431,7 +497,7 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
       h('ul', { class: 'tl', style: 'margin-top:12px' }, [...d.eventos].reverse().map((e) => h('li', { class: F.ETAPAS_FIM.includes(e.para_etapa) ? 'marco' : '' },
         h('div', { class: 'row between' },
           // `titulo` existe nos eventos que não são mudança de etapa (assumir, liberar): sem ele a
-          // linha sairia como "Aguardando médico → Aguardando médico".
+          // linha sairia como "Com o médico → Com o médico".
           h('b', {}, e.titulo || (e.de_etapa ? `${F.ETAPAS[e.de_etapa]} → ${F.ETAPAS[e.para_etapa]}` : F.ETAPAS[e.para_etapa])),
           h('span', { class: 'when' }, quando(e.criado_em))),
         h('p', { class: 'micro muted' }, nomeDe(e.ator_id), e.nota ? ' · ' + e.nota : '')))));
@@ -458,7 +524,7 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
   const pedida = /^#acao=([A-Z0-9]+)$/.exec(location.hash)?.[1];
   if (pedida) {
     history.replaceState(null, '', location.pathname + location.search);
-    const t = F.transicoesDe(d.sol, ctx.papeis, ctx.ator).find((x) => x.id === pedida);
+    const t = F.transicoesDe(d.sol, ctx.papeis).find((x) => x.id === pedida);
     if (t) executar(t);
   }
 });

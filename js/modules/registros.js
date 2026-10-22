@@ -11,7 +11,11 @@ export const init = () => start('registros/', 'Documentos e comunicações', asy
   const [sols, docs, coms, entregas] = await Promise.all([
     run(listar('solicitacoes')), run(listar('documentos')), run(listar('comunicacoes')), run(listar('entregas')),
   ]);
-  const aba = qs('aba') || 'comunicacoes';
+  // O Arquivo vê comunicação (ele participa do grupo) mas não vê documento, nem os metadados.
+  // A aba some para quem não tem o recurso, em vez de abrir uma lista que a matriz nega.
+  const verDocs = ctx.pode('documento_metadados');
+  const pedida = qs('aba') || 'comunicacoes';
+  const aba = pedida === 'documentos' && !verDocs ? 'comunicacoes' : pedida;
   const solDe = (id) => sols.find((s) => s.id === id);
   const prot = (id) => '#' + (solDe(id)?.protocolo ?? '?');
   const linkSol = (id) => h('a', { class: 't', href: ROOT + `solicitacoes/detalhe.html?id=${id}` }, prot(id));
@@ -44,7 +48,9 @@ export const init = () => start('registros/', 'Documentos e comunicações', asy
     { key: 'sol', label: 'Solicitação', sort: (x) => solDe(x.solicitacao_id)?.protocolo, render: (x) => linkSol(x.solicitacao_id) },
     { key: 'nome', label: 'Documento', sort: (x) => x.nome, render: (x) => h('span', {}, x.nome, h('div', { class: 'small muted' }, `versão ${x.versao}${x.substitui_id ? ' · substitui a anterior' : ''}`)) },
     { key: 'estado', label: 'Estado', sort: (x) => x.estado, render: (x) => badge(F.DOC_ESTADOS[x.estado], x.estado === 'emitido' ? 'ok' : 'dim') },
-    { key: 'quem', label: 'Emitido por', sort: (x) => nomeDe(x.emitido_por), render: (x) => h('span', { class: 'small' }, nomeDe(x.emitido_por)) },
+    // `emitido_por` guarda o NOME do médico, não um id: ele não é usuário do sistema. Quem digitou
+    // está em `registrado_por`, e os dois aparecem juntos — decidir e transcrever são atos distintos.
+    { key: 'quem', label: 'Emitido por', sort: (x) => String(x.emitido_por || ''), render: (x) => h('span', { class: 'small' }, x.emitido_por || '—', x.registrado_por ? h('div', { class: 'micro muted' }, 'registrada por ' + nomeDe(x.registrado_por)) : null) },
     { key: 'quando', label: 'Quando', sort: (x) => x.criado_em, render: (x) => h('span', { class: 'small' }, quando(x.criado_em)) },
     { key: 'a', label: '', render: (x) => (podeAbrir ? h('button', { class: 'btn sm', onclick: () => abrirDoc(x) }, 'Abrir') : h('span', { class: 'small muted' }, 'sem permissão')) },
   ];
@@ -93,7 +99,11 @@ export const init = () => start('registros/', 'Documentos e comunicações', asy
 
   view.append(
     pageHead('Operação', 'Documentos e comunicações', 'Canal, horário, responsável, destinatário e resultado de cada registro.'),
-    tabs([['?aba=comunicacoes', `Comunicações (${coms.length})`], ['?aba=documentos', `Documentos (${docs.length})`], ['?aba=entregas', `Entregas (${entregas.length})`]], '?aba=' + aba),
+    tabs([
+      ['?aba=comunicacoes', `Comunicações (${coms.length})`],
+      verDocs ? ['?aba=documentos', `Documentos (${docs.length})`] : null,
+      ['?aba=entregas', `Entregas (${entregas.length})`],
+    ].filter(Boolean), '?aba=' + aba),
     h('div', { style: 'margin-top:16px' }, body));
   draw();
 });

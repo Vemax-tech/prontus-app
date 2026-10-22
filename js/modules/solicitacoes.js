@@ -142,7 +142,7 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
       { tipo: 'busca', chave: 'q', placeholder: 'Buscar por protocolo, paciente ou relato…' },
       { tipo: 'select', chave: 'tipo', rotulo: 'Todos os tipos', opcoes: Object.entries(F.TIPOS) },
       { tipo: 'select', chave: 'etapa', rotulo: 'Todas as etapas', opcoes: Object.entries(F.ETAPAS) },
-      { tipo: 'select', chave: 'papel', rotulo: 'Próxima ação de qualquer um', opcoes: [['Call Center', 'Call Center'], ['Arquivo', 'Arquivo'], ['Recepção', 'Recepção'], ['Médico', 'Médico']] },
+      { tipo: 'select', chave: 'papel', rotulo: 'Próxima ação de qualquer um', opcoes: [['Call Center', 'Call Center'], ['Arquivo', 'Arquivo'], ['Recepção', 'Recepção']] },
       { tipo: 'select', chave: 'dono', rotulo: 'Qualquer responsável', opcoes: [['eu', 'Os que eu assumi'], ['livre', 'Sem dono']] },
       { tipo: 'select', chave: 'prazo', rotulo: 'Qualquer prazo', opcoes: [['atrasada', 'Paradas além da meta'], ['atencao', 'Perto do prazo'], ['sem_meta', 'Etapa sem meta']] },
       { tipo: 'select', chave: 'prio', rotulo: 'Todas as prioridades', opcoes: Object.entries(PRIO) },

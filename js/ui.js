@@ -6,7 +6,7 @@
 // e no CSS de css/.
 import { criarIcon, criarRun, empty as emptyBase, h, toast } from './base/dom.js';
 import { papelAtual, definirPapel, papeisAtuais, atorAtual, PAPEIS } from './papel.js';
-import { pode, podeCompleto } from './permissoes.js';
+import { pode, podeCompleto, PAPEL_RESUMO } from './permissoes.js';
 import { nomeDe, usuarioPor, reiniciar, avisosDoPapel, marcarAvisosLidos } from './dados.js';
 import { dadosDasFilas, contarFilas } from './filas.js';
 import { temaAtual, alternarTema, TEMAS } from './tema.js';
@@ -27,6 +27,7 @@ const ICONS = {
   file: '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>',
   chart: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9M13 17V5M8 17v-3"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
   check: '<path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
   clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
@@ -84,6 +85,10 @@ export const pageHead = (olho, titulo, sub, ...acoes) => h('div', { class: 'head
 
 // ---------------------------------------------------------------- navegação
 // [pasta, rótulo, ícone, recurso exigido (null = todos), separador antes]
+//
+// A BARRA É FILTRADA PELA MATRIZ DE PERMISSÕES, e é de propósito que ela fique curta: cada papel
+// vê só as telas do fluxo dele. O Arquivo não tem relatório nem administração; o Administrador não
+// tem fila, porque acompanha em vez de executar. Ninguém precisa aprender a ignorar menu.
 const NAV = [
   ['', 'Visão geral', 'home', 'dashboard', false],
   ['filas/', 'Fila atual', 'inbox', 'tarefa_ver', false],
@@ -92,8 +97,9 @@ const NAV = [
   ['prontuarios/', 'Prontuários', 'archive', 'prontuario_ver', false],
   ['registros/', 'Documentos', 'file', 'comunicacao_ver', false],
   ['relatorios/', 'Relatórios', 'chart', 'relatorios', true],
-  ['permissoes/', 'Permissões', 'shield', null, false],
-  // Configurações NÃO entra aqui: é de administração, usada de vez em quando, e um nono item
+  ['usuarios/', 'Usuários', 'users', 'usuarios', false],
+  ['permissoes/', 'Permissões', 'shield', 'auditoria', false],
+  // Configurações NÃO entra aqui: é de administração, usada de vez em quando, e mais um item
   // não cabe na barra nem em 1680 px — espremeria a navegação que a equipe usa o dia inteiro
   // para acomodar uma tela que se abre uma vez por mês. Fica como engrenagem, ao lado do perfil.
 ];
@@ -187,10 +193,13 @@ function quemSouEu() {
   const iniciais = (u?.nome || '?').split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
   return h('div', { class: 'whoami' },
     h('span', { class: 'avatar', 'aria-hidden': 'true' }, iniciais),
-    h('span', { class: 't' }, h('b', {}, u?.nome || '—'), h('span', {}, u?.registro_profissional || u?.cargo || '')),
+    h('span', { class: 't' }, h('b', {}, u?.nome || '—'), h('span', {}, u?.cargo || PAPEIS[atual])),
     h('select', {
       'aria-label': 'Papel em uso na demonstração',
-      onchange: (e) => { definirPapel(e.target.value); location.reload(); },
+      // Trocar de papel LEVA À TELA INICIAL do papel novo, em vez de recarregar a atual. Cada papel
+      // enxerga um conjunto diferente de telas, e recarregar no mesmo endereço entregava um "Sem
+      // acesso" a quem só quis ver o sistema pelos olhos de outra equipe.
+      onchange: (e) => { definirPapel(e.target.value); location.assign(ROOT); },
     }, Object.entries(PAPEIS).map(([k, v]) => h('option', { value: k, selected: k === atual }, v))));
 }
 
@@ -246,7 +255,7 @@ export async function start(key, title, render) {
   if (mod && mod[3] && !ctx.pode(mod[3])) {
     view.replaceChildren(h('div', { class: 'empty' },
       h('h1', {}, 'Sem acesso'),
-      h('p', { style: 'margin:8px 0 16px' }, `O papel "${PAPEIS[papeis[0]]}" não tem acesso a esta área. Em produção o servidor recusaria a consulta, não só a tela.`),
+      h('p', { style: 'margin:8px 0 16px' }, `Esta área não faz parte do fluxo de ${PAPEIS[papeis[0]]}. ${PAPEL_RESUMO[papeis[0]] || ''} Em produção o servidor recusaria a consulta, não só a tela.`),
       h('a', { class: 'btn', href: ROOT }, 'Voltar à visão geral')));
     return;
   }
@@ -261,7 +270,7 @@ export async function start(key, title, render) {
 /** Cor da etapa pelo que ela significa: espera, pronto para seguir, ou encerrado. */
 export const corEtapa = (etapa) => ({
   aberta: 'info', em_triagem: 'info', aguardando_prontuario: 'warn', prontuario_em_transito: 'warn',
-  prontuario_na_recepcao: 'info', aguardando_medico: 'warn', aguardando_esclarecimento: 'warn',
+  prontuario_na_recepcao: 'info', com_medico: 'warn', aguardando_esclarecimento: 'warn',
   retorno_disponivel: 'ok', aguardando_contato_paciente: 'ok', aguardando_entrega: 'ok',
   concluida: 'dim', cancelada: 'dim',
 }[etapa] ?? '');

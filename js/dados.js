@@ -34,7 +34,7 @@ export const db = {
   empresa: { id: 'emp-1', nome: 'Clínica (demonstração)' },
   // Configuração da clínica. Em produção é uma tabela; aqui mora no mesmo db para ser salva,
   // restaurada e reiniciada junto com o resto da demonstração.
-  config: { metas: { ...METAS_PADRAO }, exigirArquivamentoParaConcluir: false },
+  config: { metas: { ...METAS_PADRAO }, exigirArquivamentoParaConcluir: false, medicos: [] },
   usuarios: [], pacientes: [], prontuarios: [], movimentos: [],
   solicitacoes: [], tarefas: [], eventos: [],
   avaliacoes: [], documentos: [], comunicacoes: [], entregas: [], auditoria: [],
@@ -43,18 +43,31 @@ export const db = {
 };
 
 // ---------------------------------------------------------------- equipe da demonstração
+// Quatro papéis, quatro fluxos de trabalho. Quem cria e desativa estas pessoas é o Administrador,
+// na tela de Usuários — a única parte do sistema em que alguém mexe na conta de outra pessoa.
 const EQUIPE = [
-  { id: 'u-cc1', nome: 'Aline Barros', papeis: ['callcenter'], cargo: 'Atendente' },
-  { id: 'u-cc2', nome: 'Rafael Nunes', papeis: ['callcenter'], cargo: 'Atendente' },
-  { id: 'u-ar1', nome: 'Silvio Prado', papeis: ['arquivo'], cargo: 'Responsável pelo arquivo' },
-  { id: 'u-re1', nome: 'Carla Menezes', papeis: ['recepcao'], cargo: 'Recepção' },
-  { id: 'u-me1', nome: 'Dra. Helena Fontes', papeis: ['medico'], cargo: 'Clínica geral', registro_profissional: 'CRM/SP 000000 (fictício)' },
-  { id: 'u-me2', nome: 'Dr. Paulo Aragão', papeis: ['medico'], cargo: 'Cardiologia', registro_profissional: 'CRM/SP 000001 (fictício)' },
-  { id: 'u-ad1', nome: 'Beatriz Lima', papeis: ['admin_empresa'], cargo: 'Coordenação' },
+  { id: 'u-ad1', nome: 'Beatriz Lima', papeis: ['admin'], cargo: 'Coordenação', email: 'beatriz@clinica.exemplo' },
+  { id: 'u-cc1', nome: 'Aline Barros', papeis: ['callcenter'], cargo: 'Atendente', email: 'aline@clinica.exemplo' },
+  { id: 'u-cc2', nome: 'Rafael Nunes', papeis: ['callcenter'], cargo: 'Atendente', email: 'rafael@clinica.exemplo' },
+  { id: 'u-ar1', nome: 'Silvio Prado', papeis: ['arquivo'], cargo: 'Responsável pelo arquivo', email: 'silvio@clinica.exemplo' },
+  { id: 'u-re1', nome: 'Carla Menezes', papeis: ['recepcao'], cargo: 'Recepção', email: 'carla@clinica.exemplo' },
+  { id: 'u-re2', nome: 'Diego Tavares', papeis: ['recepcao'], cargo: 'Recepção', email: 'diego@clinica.exemplo' },
 ];
+
+// OS MÉDICOS NÃO SÃO USUÁRIOS. Eles não entram no sistema, não têm fila e não têm senha: o caso
+// chega até eles em papel, com o prontuário, como já chega hoje. O que o sistema guarda é a lista
+// de quem atende na clínica — mantida pela administração em Configurações — para a Recepção
+// escolher a quem levou o caso e assinar o retorno com o nome e o registro certos.
+const MEDICOS_PADRAO = [
+  { nome: 'Dra. Helena Fontes', registro: 'CRM/SP 000000 (fictício)', especialidade: 'Clínica geral' },
+  { nome: 'Dr. Paulo Aragão', registro: 'CRM/SP 000001 (fictício)', especialidade: 'Cardiologia' },
+];
+export const medicosDaClinica = () => db.config.medicos.map((m) => ({ ...m }));
+
 export const usuarioPor = (id) => db.usuarios.find((u) => u.id === id);
 export const nomeDe = (id) => usuarioPor(id)?.nome || '—';
-export const equipeDoPapel = (papel) => db.usuarios.filter((u) => u.papeis.includes(papel));
+/** Só gente ativa: um usuário desativado não recebe trabalho novo, mas continua no histórico. */
+export const equipeDoPapel = (papel) => db.usuarios.filter((u) => u.ativo !== false && u.papeis.includes(papel));
 
 // ---------------------------------------------------------------- pacientes sintéticos
 const PACIENTES = [
@@ -132,36 +145,41 @@ function semearSolicitacao(spec) {
   if (ate >= MARCOS.indexOf('recebido')) { mov('recebido', 'u-re1'); ir('prontuario_na_recepcao', 'u-re1', 'Recepção confirmou o recebimento.'); }
   if (ate >= MARCOS.indexOf('conferido')) mov('conferido', 'u-re1', 'Identificação conferida, sem divergência.');
   if (ate >= MARCOS.indexOf('ao_medico')) {
+    const med = db.config.medicos.find((m) => m.nome === spec.medico) || db.config.medicos[0];
     mov('encaminhado_medico', 'u-re1');
-    ir('aguardando_medico', 'u-re1', `Caso apresentado a ${nomeDe(spec.medico || 'u-me1')}.`);
-    sol.medico_id = spec.medico || 'u-me1';
-    tarefa(sol, 'medico', spec.tipo === 'pedido_receita' ? 'Analisar o pedido de receita' : 'Analisar a dúvida ou correção', ate >= MARCOS.indexOf('avaliado') ? 'concluida' : 'pendente', sol.medico_id);
+    sol.medico_nome = med.nome; sol.medico_registro = med.registro;
+    ir('com_medico', 'u-re1', `Caso levado a ${med.nome}, junto com o prontuário.`);
+    tarefa(sol, 'recepcao', spec.tipo === 'pedido_receita' ? 'Buscar a receita com o médico e registrar' : 'Buscar a resposta do médico e registrar',
+      ate >= MARCOS.indexOf('avaliado') ? 'concluida' : 'pendente');
   }
   if (ate >= MARCOS.indexOf('avaliado')) {
-    const med = sol.medico_id;
     const desfecho = spec.desfecho || (spec.tipo === 'pedido_receita' ? 'receita_emitida' : 'respondido');
+    // A decisão é do médico; o registro é da Recepção, que foi até a sala e voltou com a resposta.
     db.avaliacoes.push({
-      id: uid('ava'), solicitacao_id: sol.id, medico_id: med, desfecho,
-      registro_profissional: usuarioPor(med).registro_profissional,
-      conteudo_clinico: spec.conteudo || 'Conteúdo clínico de exemplo, registrado pelo profissional. (dado fictício)',
+      id: uid('ava'), solicitacao_id: sol.id, desfecho,
+      medico_nome: sol.medico_nome, registro_profissional: sol.medico_registro, registrado_por: 'u-re1',
+      conteudo_clinico: spec.conteudo || 'Conteúdo clínico de exemplo, ditado pelo profissional. (dado fictício)',
       resumo_para_paciente: spec.resumo || 'Resumo autorizado para repassar ao paciente. (dado fictício)',
       criado_em: passo(1.5),
     });
     if (desfecho === 'receita_emitida' || desfecho === 'corrigido') {
+      const doc = (versao, estado, substitui_id, sufixo) => db.documentos.push({
+        id: uid('doc'), solicitacao_id: sol.id, tipo: 'receita', versao, substitui_id, estado,
+        emitido_por: sol.medico_nome, registrado_por: 'u-re1',
+        nome: `Receita — protocolo ${sol.protocolo}${sufixo}`, criado_em: passo(0.2),
+      });
       const anterior = desfecho === 'corrigido';
-      if (anterior) {
-        db.documentos.push({ id: uid('doc'), solicitacao_id: sol.id, tipo: 'receita', versao: 1, substitui_id: null, estado: 'substituido', emitido_por: med, nome: `Receita — protocolo ${sol.protocolo} (v1)`, criado_em: passo(0.2) });
-      }
+      if (anterior) doc(1, 'substituido', null, ' (v1)');
       const v1 = db.documentos.filter((d) => d.solicitacao_id === sol.id)[0];
-      db.documentos.push({ id: uid('doc'), solicitacao_id: sol.id, tipo: 'receita', versao: anterior ? 2 : 1, substitui_id: v1?.id || null, estado: 'emitido', emitido_por: med, nome: `Receita — protocolo ${sol.protocolo}${anterior ? ' (v2, corrigida)' : ''}`, criado_em: passo(0.2) });
+      doc(anterior ? 2 : 1, 'emitido', v1?.id || null, anterior ? ' (v2, corrigida)' : '');
     }
     mov('devolvido_medico', 'u-re1');
     if (desfecho === 'nao_aprovado') {
-      ir('concluida', med, 'Pedido não aprovado pelo médico. Pendência: comunicar o paciente.');
+      ir('concluida', 'u-re1', 'Médico não aprovou o pedido. Pendência: comunicar o paciente.');
       sol.desfecho = 'nao_aprovada'; sol.concluida_em = sol.etapa_desde;
       tarefa(sol, 'callcenter', 'Comunicar ao paciente que o pedido não foi aprovado', 'pendente', cc);
     } else {
-      ir('retorno_disponivel', med, 'Retorno registrado pelo médico.');
+      ir('retorno_disponivel', 'u-re1', `Retorno de ${sol.medico_nome} registrado pela Recepção.`);
       tarefa(sol, 'recepcao', 'Receber o retorno e avisar no grupo', ate >= MARCOS.indexOf('avisado_grupo') ? 'concluida' : 'pendente');
     }
   }
@@ -207,9 +225,7 @@ function semearSolicitacao(spec) {
   // "Minha fila" com o que já tem nome. Sem isso, uma das duas telas abriria vazia.
   if (F.aberta(sol) && spec.assumido !== false) {
     const papel = F.papeisDaEtapa(sol)[0];
-    const dono = papel === 'medico' ? sol.medico_id
-      : papel === 'callcenter' ? cc
-        : equipeDoPapel(papel)[0]?.id;
+    const dono = papel === 'callcenter' ? cc : equipeDoPapel(papel)[0]?.id;
     if (dono) {
       sol.assumido_por = dono; sol.assumido_em = sol.etapa_desde;
       sincronizarTarefa(sol, dono);
@@ -258,7 +274,7 @@ const ROTEIRO = [
   { tipo: 'duvida_correcao', ate: 'localizado', pac: 3, horas: 2, relato: 'Nome do medicamento parece trocado em relação ao que toma há dois anos.' },
   { tipo: 'pedido_receita', ate: 'entregue', pac: 4, horas: 10, assumido: false, relato: 'Pede receita para continuar o tratamento.' },
   { tipo: 'duvida_correcao', ate: 'recebido', pac: 5, horas: 8, relato: 'Quer saber se pode tomar os dois remédios no mesmo horário.' },
-  { tipo: 'pedido_receita', ate: 'ao_medico', pac: 6, horas: 1, relato: 'Receita vencida; pede emissão de nova via.', medico: 'u-me2' },
+  { tipo: 'pedido_receita', ate: 'ao_medico', pac: 6, horas: 1, relato: 'Receita vencida; pede emissão de nova via.', medico: 'Dr. Paulo Aragão' },
   { tipo: 'duvida_correcao', ate: 'ao_medico', pac: 7, horas: 48, relato: 'Receita sem a quantidade de dias de uso.', prioridade: 'alta' },
   { tipo: 'duvida_correcao', ate: 'avaliado', pac: 8, horas: 1, relato: 'Dosagem divergente da que foi dita na consulta.', desfecho: 'corrigido', devolucao: 'devolvido' },
   { tipo: 'pedido_receita', ate: 'avisado_grupo', pac: 9, horas: 2, relato: 'Pede receita de uso contínuo para três meses.', devolucao: 'recebido' },
@@ -282,7 +298,7 @@ const ROTEIRO = [
 
 export function semear() {
   db.seq = 0;
-  db.config = { metas: { ...METAS_PADRAO }, exigirArquivamentoParaConcluir: false };
+  db.config = { metas: { ...METAS_PADRAO }, exigirArquivamentoParaConcluir: false, medicos: MEDICOS_PADRAO.map((m) => ({ ...m })) };
   db.avisos = [];
   db.usuarios = EQUIPE.map((u) => ({ ...u, ativo: true }));
   db.pacientes = PACIENTES.map(([nome, nasc, tel], i) => ({
@@ -318,7 +334,7 @@ const CHAVE_DB = 'prontus_db';
 // Suba este número sempre que a FORMA dos dados mudar (campo novo, campo que sumiu). Uma aba
 // aberta desde antes da mudança tem o modelo velho guardado, e carregá-lo daria uma tela quebrada
 // por um motivo invisível — é mais barato descartar e semear de novo.
-const VERSAO_DB = 3;
+const VERSAO_DB = 4;
 
 function salvar() {
   try { sessionStorage.setItem(CHAVE_DB, JSON.stringify({ v: VERSAO_DB, db })); } catch { /* sem storage: vale só esta página */ }
@@ -500,10 +516,6 @@ export async function assumirSolicitacao({ id, papeis, ator }) {
   if (!sol) return erro('Solicitação não encontrada.', 'PGRST116');
   if (!F.aberta(sol)) return erro('O caso já foi encerrado: não há etapa para assumir.');
   if (!papeisNaVez(sol, papeis).length) return negado(`Nesta etapa a vez é do papel ${F.proximaAcao(sol).papel}.`);
-  // RN-10: o caso encaminhado a um médico só é assumido por aquele médico.
-  if (papeis.includes('medico') && sol.medico_id && sol.medico_id !== ator) {
-    return negado('Este caso foi encaminhado a outro profissional.');
-  }
   if (sol.assumido_por === ator) return ok({ ...sol });
   if (sol.assumido_por) return erro(`${nomeDe(sol.assumido_por)} já assumiu este caso. Peça para liberar antes.`);
   sol.assumido_por = ator; sol.assumido_em = agora();
@@ -531,14 +543,22 @@ export async function liberarSolicitacao({ id, papeis, ator, motivo }) {
 }
 
 /** Espelho de mover_solicitacao(): valida transição, papel, condições e grava o evento. Tudo ou nada. */
-export async function moverSolicitacao({ id, transicao, papeis, ator, motivo, nota }) {
+export async function moverSolicitacao({ id, transicao, papeis, ator, motivo, nota, medico_nome, medico_registro }) {
   const sol = db.solicitacoes.find((s) => s.id === id);
   if (!sol) return erro('Solicitação não encontrada.', 'PGRST116');
-  const t = F.transicoesDe(sol, papeis, ator).find((x) => x.id === transicao && x.de === sol.etapa);
+  const t = F.transicoesDe(sol, papeis).find((x) => x.id === transicao && x.de === sol.etapa);
   if (!t) return negado('Essa ação não é permitida para o seu papel nesta etapa.');
   if (t.exigeMotivo && !String(motivo || '').trim()) return erro('Informe o motivo.');
   if (t.exigeConferencia && !db.movimentos.some((m) => m.solicitacao_id === id && m.tipo === 'conferido')) {
-    return erro('Registre a conferência do prontuário antes de encaminhar ao médico.');
+    return erro('Registre a conferência do prontuário antes de levar o caso ao médico.');
+  }
+  // T06: o caso sai do sistema e vai para a mão de alguém. Sem saber de quem, o sistema não
+  // conseguiria dizer com quem o caso está nem assinar o retorno quando ele voltar.
+  if (t.exigeMedico) {
+    const nome = String(medico_nome || '').trim();
+    if (!nome) return erro('Informe a qual médico o caso foi levado.');
+    sol.medico_nome = nome;
+    sol.medico_registro = String(medico_registro || db.config.medicos.find((m) => m.nome === nome)?.registro || '').trim();
   }
   // RN-06: conclusão só com os requisitos do tipo cumpridos.
   if (t.para === 'concluida' && t.desfecho === 'resolvida') {
@@ -585,7 +605,7 @@ function proximaTarefa(sol) {
   const jaTem = db.tarefas.some((t) => t.solicitacao_id === sol.id && t.estado === 'pendente' && t.papel_responsavel === papel);
   // A tarefa nasce com dono quando o caso já tem um: de quem assumiu, ou do médico a quem foi
   // encaminhado. Sem dono, ela fica na fila da equipe à espera de alguém assumir.
-  if (!jaTem) tarefa(sol, papel, prox.texto, 'pendente', sol.assumido_por || (papel === 'medico' ? sol.medico_id : null));
+  if (!jaTem) tarefa(sol, papel, prox.texto, 'pendente', sol.assumido_por || null);
 }
 
 /** Espelho de mover_prontuario(): custódia única, transição válida, papel certo. RN-07, RN-08, RN-09. */
@@ -622,25 +642,41 @@ export async function registrarComunicacao({ solicitacao_id, canal, tipo, destin
   return ok({ ...c });
 }
 
-/** RN-10 e RN-11: só o médico a quem o caso foi encaminhado, e com registro profissional. */
-export async function registrarAvaliacao({ solicitacao_id, desfecho, conteudo_clinico, resumo_para_paciente, papeis, ator }) {
-  if (!pode(papeis, 'avaliacao_registrar', 'editar')) return negado('Só um profissional habilitado registra a decisão clínica.');
-  const u = usuarioPor(ator);
-  if (!u?.registro_profissional) return negado('O papel de médico exige registro profissional cadastrado.');
+/**
+ * RN-11, nova redação: a DECISÃO é do médico, o REGISTRO é da Recepção.
+ *
+ * O médico não usa o sistema — ele decide no papel, com o prontuário na frente. Quem transcreve é
+ * quem foi até a sala e voltou. Para a transcrição não virar uma decisão anônima, o registro é
+ * assinado: nome e registro profissional de quem decidiu ficam gravados na avaliação, junto com o
+ * id de quem digitou. São duas pessoas na mesma linha, e é assim que a auditoria consegue
+ * responder tanto "quem decidiu" quanto "quem registrou".
+ */
+export async function registrarAvaliacao({ solicitacao_id, desfecho, conteudo_clinico, resumo_para_paciente, medico_nome, medico_registro, papeis, ator }) {
+  if (!pode(papeis, 'avaliacao_registrar', 'editar')) return negado('Só a Recepção registra o retorno do médico.');
   const sol = db.solicitacoes.find((s) => s.id === solicitacao_id);
   if (!sol) return erro('Solicitação não encontrada.', 'PGRST116');
-  if (sol.etapa !== 'aguardando_medico') return erro('A solicitação não está aguardando avaliação médica.');
-  if (sol.medico_id && sol.medico_id !== ator) return negado('Este caso foi encaminhado a outro profissional.');
-  const a = { id: uid('ava'), solicitacao_id, medico_id: ator, desfecho, registro_profissional: u.registro_profissional, conteudo_clinico: conteudo_clinico || '', resumo_para_paciente: resumo_para_paciente || '', criado_em: agora() };
+  if (sol.etapa !== 'com_medico') return erro('A solicitação não está com o médico.');
+  const nome = String(medico_nome || sol.medico_nome || '').trim();
+  const registro = String(medico_registro || sol.medico_registro || '').trim();
+  if (!nome || !registro) return erro('Informe o nome e o registro profissional de quem decidiu.');
+  const a = {
+    id: uid('ava'), solicitacao_id, desfecho,
+    medico_nome: nome, registro_profissional: registro, registrado_por: ator,
+    conteudo_clinico: conteudo_clinico || '', resumo_para_paciente: resumo_para_paciente || '', criado_em: agora(),
+  };
   db.avaliacoes.push(a);
   if (desfecho === 'receita_emitida' || desfecho === 'corrigido') {
     // RN-15 / RF-23: correção cria NOVA VERSÃO; a anterior continua existindo.
     const anteriores = db.documentos.filter((d) => d.solicitacao_id === solicitacao_id);
     anteriores.forEach((d) => { if (d.estado === 'emitido') d.estado = 'substituido'; });
     const ultima = anteriores[anteriores.length - 1];
-    db.documentos.push({ id: uid('doc'), solicitacao_id, tipo: 'receita', versao: (ultima?.versao || 0) + 1, substitui_id: ultima?.id || null, estado: 'emitido', emitido_por: ator, nome: `Receita — protocolo ${sol.protocolo}${ultima ? ` (v${(ultima.versao || 0) + 1}, corrigida)` : ''}`, criado_em: agora() });
+    db.documentos.push({
+      id: uid('doc'), solicitacao_id, tipo: 'receita', versao: (ultima?.versao || 0) + 1,
+      substitui_id: ultima?.id || null, estado: 'emitido', emitido_por: nome, registrado_por: ator,
+      nome: `Receita — protocolo ${sol.protocolo}${ultima ? ` (v${(ultima.versao || 0) + 1}, corrigida)` : ''}`, criado_em: agora(),
+    });
   }
-  auditarEscrita('avaliacao', 'avaliacao_medica', solicitacao_id, ator, desfecho);
+  auditarEscrita('avaliacao', 'avaliacao_medica', solicitacao_id, ator, `${desfecho} — ${nome}`);
   return ok({ ...a });
 }
 
@@ -681,8 +717,17 @@ export async function reiniciar() { semear(); salvar(); return ok(true); }
 /** Configuração da clínica. Em produção, uma tabela com RLS: só quem administra escreve. */
 export const configAtual = () => ({ ...db.config, metas: { ...db.config.metas } });
 
-export async function salvarConfig({ metas, exigirArquivamentoParaConcluir, papeis, ator }) {
+export async function salvarConfig({ metas, exigirArquivamentoParaConcluir, medicos, papeis, ator }) {
   if (!pode(papeis, 'configuracoes', 'editar')) return negado('Só a administração da clínica muda a configuração.');
+  if (medicos) {
+    const limpos = medicos
+      .map((m) => ({ nome: String(m.nome || '').trim(), registro: String(m.registro || '').trim(), especialidade: String(m.especialidade || '').trim() }))
+      .filter((m) => m.nome || m.registro);
+    if (limpos.some((m) => !m.nome || !m.registro)) return erro('Cada médico precisa de nome e registro profissional.');
+    const nomes = limpos.map((m) => m.nome.toLowerCase());
+    if (new Set(nomes).size !== nomes.length) return erro('Há dois médicos com o mesmo nome na lista.');
+    db.config.medicos = limpos;
+  }
   if (metas) {
     for (const [etapa, v] of Object.entries(metas)) {
       if (!F.ETAPAS[etapa]) return erro(`Etapa desconhecida: ${etapa}`);
@@ -693,7 +738,92 @@ export async function salvarConfig({ metas, exigirArquivamentoParaConcluir, pape
   if (typeof exigirArquivamentoParaConcluir === 'boolean') {
     db.config.exigirArquivamentoParaConcluir = exigirArquivamentoParaConcluir;
   }
-  db.auditoria.push({ id: uid('aud'), acao: 'configuracao', recurso: 'configuracoes', solicitacao_id: null, ator_id: ator, detalhe: 'metas de prazo e regra de conclusão', quando: agora() });
+  db.auditoria.push({ id: uid('aud'), acao: 'configuracao', recurso: 'configuracoes', solicitacao_id: null, ator_id: ator, detalhe: 'metas de prazo, regra de conclusão e lista de médicos', quando: agora() });
   salvar();
   return ok(configAtual());
+}
+
+// ---------------------------------------------------------------- usuários (só o Administrador)
+//
+// É a razão de o papel de Administrador existir: alguém da clínica precisa poder dar e tirar
+// acesso sem abrir chamado com o fornecedor. Três regras moldam esta parte:
+//
+//  1. UM PAPEL POR PESSOA. O sistema aceitaria vários, mas a clínica não precisa disso agora, e
+//     "quem é da vez" fica ambíguo quando a mesma pessoa está em duas filas.
+//  2. QUEM TEM HISTÓRICO NÃO É APAGADO, É DESATIVADO. Apagar o id de quem assumiu um caso
+//     deixaria a linha do tempo dizendo "—" no lugar de um nome, e um registro de saúde não pode
+//     perder a autoria. Só quem nunca agiu some de verdade.
+//  3. NINGUÉM FICA SEM ADMINISTRADOR. Tirar o último admin trancaria a clínica para fora da
+//     própria administração, então essa operação é recusada.
+
+/** Onde um usuário deixou rastro. Vazio = nunca agiu, então pode ser apagado de verdade. */
+function rastroDe(id) {
+  const n = (arr, campo) => arr.filter((r) => r[campo] === id).length;
+  return n(db.solicitacoes, 'aberta_por') + n(db.solicitacoes, 'assumido_por')
+    + n(db.movimentos, 'ator_id') + n(db.eventos, 'ator_id') + n(db.comunicacoes, 'ator_id')
+    + n(db.avaliacoes, 'registrado_por') + n(db.tarefas, 'responsavel_id') + n(db.auditoria, 'ator_id');
+}
+
+const admins = () => db.usuarios.filter((u) => u.ativo !== false && u.papeis.includes('admin'));
+
+function validarUsuario({ nome, email, papel }, idAtual = null) {
+  if (!String(nome || '').trim()) return 'Informe o nome.';
+  if (!PAPEIS[papel]) return 'Escolha um papel válido.';
+  const e = String(email || '').trim().toLowerCase();
+  if (e && db.usuarios.some((u) => u.id !== idAtual && (u.email || '').toLowerCase() === e)) return 'Já existe um usuário com este e-mail.';
+  return null;
+}
+
+export async function criarUsuario({ nome, email, cargo, papel, papeis, ator }) {
+  if (!pode(papeis, 'usuarios', 'editar')) return negado('Só o Administrador cria usuários.');
+  const msg = validarUsuario({ nome, email, papel });
+  if (msg) return erro(msg);
+  const u = {
+    id: uid('u'), nome: String(nome).trim(), email: String(email || '').trim(),
+    cargo: String(cargo || '').trim() || PAPEIS[papel], papeis: [papel], ativo: true, criado_em: agora(),
+  };
+  db.usuarios.push(u);
+  auditarEscrita('criacao', 'usuario', null, ator, `${u.nome} — ${PAPEIS[papel]}`);
+  return ok({ ...u });
+}
+
+export async function atualizarUsuario({ id, nome, email, cargo, papel, ativo, papeis, ator }) {
+  if (!pode(papeis, 'usuarios', 'editar')) return negado('Só o Administrador edita usuários.');
+  const u = usuarioPor(id);
+  if (!u) return erro('Usuário não encontrado.', 'PGRST116');
+  const novoPapel = papel || u.papeis[0];
+  const ficaAtivo = ativo === undefined ? u.ativo !== false : Boolean(ativo);
+  const msg = validarUsuario({ nome: nome ?? u.nome, email: email ?? u.email, papel: novoPapel }, id);
+  if (msg) return erro(msg);
+  const perdeAdmin = u.papeis.includes('admin') && (novoPapel !== 'admin' || !ficaAtivo);
+  if (perdeAdmin && admins().length <= 1) return erro('Este é o último administrador ativo. Promova outra pessoa antes.');
+  if (id === ator && !ficaAtivo) return erro('Você não pode desativar a própria conta.');
+  if (nome !== undefined) u.nome = String(nome).trim();
+  if (email !== undefined) u.email = String(email).trim();
+  if (cargo !== undefined) u.cargo = String(cargo).trim() || PAPEIS[novoPapel];
+  u.papeis = [novoPapel];
+  u.ativo = ficaAtivo;
+  auditarEscrita('alteracao', 'usuario', null, ator, `${u.nome} — ${PAPEIS[novoPapel]}${ficaAtivo ? '' : ' (desativado)'}`);
+  return ok({ ...u });
+}
+
+/**
+ * Exclui. Quem já agiu no sistema é DESATIVADO em vez de apagado — e a resposta diz qual dos dois
+ * aconteceu, para a tela poder ser honesta sobre o que o clique fez.
+ */
+export async function excluirUsuario({ id, papeis, ator }) {
+  if (!pode(papeis, 'usuarios', 'editar')) return negado('Só o Administrador exclui usuários.');
+  const u = usuarioPor(id);
+  if (!u) return erro('Usuário não encontrado.', 'PGRST116');
+  if (id === ator) return erro('Você não pode excluir a própria conta.');
+  if (u.papeis.includes('admin') && admins().length <= 1) return erro('Este é o último administrador ativo. Promova outra pessoa antes.');
+  const rastro = rastroDe(id);
+  if (rastro) {
+    u.ativo = false;
+    auditarEscrita('desativacao', 'usuario', null, ator, `${u.nome} — ${rastro} registro(s) no histórico`);
+    return ok({ removido: false, desativado: true, nome: u.nome, rastro });
+  }
+  db.usuarios = db.usuarios.filter((x) => x.id !== id);
+  auditarEscrita('exclusao', 'usuario', null, ator, u.nome);
+  return ok({ removido: true, desativado: false, nome: u.nome, rastro: 0 });
 }

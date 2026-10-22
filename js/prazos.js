@@ -13,7 +13,8 @@
 // OS VALORES ABAIXO SÃO PROPOSTA, NÃO VERDADE. O plano lista "qual tempo máximo é aceitável em
 // cada etapa" como pergunta em aberto, e só a clínica responde. Eles estão aqui para o sistema
 // nascer funcionando, e a tela de configuração diz, em letras, que são um ponto de partida.
-// O único valor que veio do plano é o das 2 horas com o médico.
+// O único valor que veio do plano é o das 2 horas com o médico — e ele continua valendo, porque a
+// etapa "Com o médico" mede exatamente o mesmo tempo: o caso saiu da Recepção e ainda não voltou.
 import * as F from './fluxo.js';
 
 /** Horas que cada etapa deveria levar. `null` = sem meta: a etapa não gera alerta. */
@@ -23,7 +24,7 @@ export const METAS_PADRAO = {
   aguardando_prontuario: 4,
   prontuario_em_transito: 2,
   prontuario_na_recepcao: 2,
-  aguardando_medico: 2,                 // do plano, seção 6
+  com_medico: 2,                        // do plano, seção 6: "2 horas com o médico"
   aguardando_esclarecimento: 4,
   retorno_disponivel: 2,
   aguardando_contato_paciente: 6,

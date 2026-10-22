@@ -254,8 +254,17 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
 .legenda { display: flex; flex-wrap: wrap; gap: 14px; font-size: .75rem; color: var(--ink-3); }
 .legenda .n { margin-right: 3px; }
 
+/* O cartão do papel em uso, na tela de permissões: a mesma peça, com a borda da marca. */
+.card.on { border-color: var(--brand); }
+.card.on h3 { display: flex; align-items: center; gap: 8px; }
+
+/* Usuário desativado: a linha continua legível — ela conta algo —, mas recua para o segundo plano.
+   Opacidade sozinha reprovaria no contraste, então o que muda é a cor do texto, não a tinta. */
+tbody tr.off td { color: var(--ink-3); }
+tbody tr.off td b { font-weight: 500; }
+
 /* ---------------------------------------------------------------- cabeçalho em tela média */
-/* Com "Fila atual" e "Minha fila" separadas são oito destinos na barra, e entre 1100 e 1536 px a
+/* Com "Fila atual" e "Minha fila" separadas são até sete destinos na barra, e entre 1100 e 1536 px a
    navegação — a parte que de fato se usa — começava a cortar o último item. Some primeiro o que é
    enfeite (o descritor da marca), depois o nome de quem está logado, que o seletor ao lado já diz,
    e por último aperta o respiro dos itens. Abaixo de 1100 px a navegação vira gaveta e o problema

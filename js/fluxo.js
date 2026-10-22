@@ -8,6 +8,10 @@
 //
 // Os códigos RN-xx / RF-xx / T-xx / C-xx citados nos comentários são os da especificação escrita
 // do produto (ver README, "Especificação").
+//
+// O MÉDICO NÃO É USUÁRIO DO SISTEMA, mas continua no processo: a Recepção leva o caso impresso e o
+// prontuário até ele, e traz a resposta de volta. Por isso a etapa se chama "Com o médico" — ela
+// descreve onde o caso ESTÁ, não quem vai clicar. Quem clica, nos dois lados dela, é a Recepção.
 
 export const TIPOS = { duvida_correcao: 'Dúvida ou correção na receita', pedido_receita: 'Solicitação de receita médica' };
 export const TIPO_CURTO = { duvida_correcao: 'Dúvida / correção', pedido_receita: 'Pedido de receita' };
@@ -19,7 +23,7 @@ export const ETAPAS = {
   aguardando_prontuario: 'Aguardando prontuário',
   prontuario_em_transito: 'Prontuário em trânsito',
   prontuario_na_recepcao: 'Prontuário na Recepção',
-  aguardando_medico: 'Aguardando médico',
+  com_medico: 'Com o médico',
   aguardando_esclarecimento: 'Aguardando esclarecimento',
   retorno_disponivel: 'Retorno disponível',
   aguardando_contato_paciente: 'Aguardando contato com o paciente',
@@ -78,19 +82,19 @@ export const TRANSICOES = [
   { id: 'T03', de: 'em_triagem', para: 'aguardando_prontuario', papeis: ['callcenter'], rotulo: 'Pedir prontuário ao arquivo', exigeComunicacao: 'pedido_prontuario', principal: true },
   { id: 'T04', de: 'aguardando_prontuario', para: 'prontuario_em_transito', papeis: ['arquivo'], rotulo: 'Entregar à Recepção', viaProntuario: 'entregue', principal: true },
   { id: 'T05', de: 'prontuario_em_transito', para: 'prontuario_na_recepcao', papeis: ['recepcao'], rotulo: 'Confirmar recebimento', viaProntuario: 'recebido', principal: true },
-  { id: 'T06', de: 'prontuario_na_recepcao', para: 'aguardando_medico', papeis: ['recepcao'], rotulo: 'Encaminhar ao médico', exigeConferencia: true, principal: true },
-  { id: 'T07', de: 'aguardando_medico', para: 'retorno_disponivel', papeis: ['medico'], rotulo: 'Registrar retorno', soDoMedicoDoCaso: true, principal: true },
-  { id: 'T08', de: 'aguardando_medico', para: 'aguardando_esclarecimento', papeis: ['medico'], rotulo: 'Pedir esclarecimento', soDoMedicoDoCaso: true },
-  { id: 'T09', de: 'aguardando_esclarecimento', para: 'aguardando_medico', papeis: ['callcenter', 'recepcao'], rotulo: 'Prestar o esclarecimento', principal: true },
+  { id: 'T06', de: 'prontuario_na_recepcao', para: 'com_medico', papeis: ['recepcao'], rotulo: 'Levar ao médico', exigeConferencia: true, exigeMedico: true, principal: true },
+  { id: 'T07', de: 'com_medico', para: 'retorno_disponivel', papeis: ['recepcao'], rotulo: 'Registrar o retorno', principal: true },
+  { id: 'T08', de: 'com_medico', para: 'aguardando_esclarecimento', papeis: ['recepcao'], rotulo: 'Médico pediu esclarecimento' },
+  { id: 'T09', de: 'aguardando_esclarecimento', para: 'com_medico', papeis: ['callcenter', 'recepcao'], rotulo: 'Prestar o esclarecimento', principal: true },
   { id: 'T10', de: 'retorno_disponivel', para: 'aguardando_contato_paciente', papeis: ['recepcao'], rotulo: 'Avisar no grupo', principal: true },
   { id: 'T11', de: 'aguardando_contato_paciente', para: 'concluida', papeis: ['callcenter'], tipos: ['duvida_correcao'], rotulo: 'Concluir: dúvida esclarecida', desfecho: 'resolvida', principal: true },
   { id: 'T12', de: 'aguardando_contato_paciente', para: 'aguardando_entrega', papeis: ['callcenter'], tipos: ['pedido_receita'], rotulo: 'Paciente avisado: definir entrega', principal: true },
   { id: 'T13', de: 'aguardando_entrega', para: 'concluida', papeis: ['callcenter', 'recepcao'], tipos: ['pedido_receita'], rotulo: 'Concluir: entrega registrada', desfecho: 'resolvida', principal: true },
-  { id: 'T14', de: 'aguardando_medico', para: 'concluida', papeis: ['medico'], tipos: ['pedido_receita'], rotulo: 'Não aprovar o pedido', desfecho: 'nao_aprovada', soDoMedicoDoCaso: true },
-  { id: 'T16', de: 'concluida', para: 'aberta', papeis: ['callcenter', 'admin_empresa'], rotulo: 'Reabrir', exigeMotivo: true },
+  { id: 'T14', de: 'com_medico', para: 'concluida', papeis: ['recepcao'], tipos: ['pedido_receita'], rotulo: 'Médico não aprovou o pedido', desfecho: 'nao_aprovada' },
+  { id: 'T16', de: 'concluida', para: 'aberta', papeis: ['callcenter', 'admin'], rotulo: 'Reabrir', exigeMotivo: true },
 ];
 /** T15: cancelar, de qualquer etapa não terminal. */
-export const CANCELAR = { id: 'T15', para: 'cancelada', papeis: ['callcenter', 'admin_empresa'], rotulo: 'Cancelar', exigeMotivo: true, desfecho: 'cancelada' };
+export const CANCELAR = { id: 'T15', para: 'cancelada', papeis: ['callcenter', 'admin'], rotulo: 'Cancelar', exigeMotivo: true, desfecho: 'cancelada' };
 
 // ---------------------------------------------------------------- transições do prontuário (eixo 3)
 export const MOV_VALIDOS = [
@@ -110,15 +114,14 @@ export const MOV_VALIDOS = [
 /**
  * Transições do eixo 1 possíveis a partir do estado atual, já filtradas por papel e por tipo.
  *
- * `ator` é opcional e só importa para RN-10: o caso encaminhado a um médico é daquele médico, e
- * `soDoMedicoDoCaso` tira a transição da lista de qualquer outro. Sem `ator` a função continua
- * respondendo só por papel — é assim que o teste puro a exercita.
+ * Só papel e tipo decidem. Com o médico fora do sistema não existe mais transição que pertença a
+ * uma pessoa específica em vez de a uma equipe — a antiga RN-10 ("o caso encaminhado a um médico só
+ * é dele") deixou de ter sujeito.
  */
-export function transicoesDe(sol, papeis, ator = null) {
+export function transicoesDe(sol, papeis) {
   const lista = TRANSICOES.filter((t) => t.de === sol.etapa
     && (!t.tipos || t.tipos.includes(sol.tipo))
-    && t.papeis.some((p) => papeis.includes(p))
-    && !(t.soDoMedicoDoCaso && ator && sol.medico_id && sol.medico_id !== ator));
+    && t.papeis.some((p) => papeis.includes(p)));
   if (aberta(sol) && CANCELAR.papeis.some((p) => papeis.includes(p))) lista.push({ ...CANCELAR, de: sol.etapa });
   return lista;
 }
@@ -142,7 +145,7 @@ export function pendenciasParaConcluir(sol, ctx) {
     faltas.push('Nenhum contato efetivo com o paciente (tentativa sem sucesso não conta).');
   }
   if (sol.tipo === 'pedido_receita') {
-    if (!(ctx.avaliacoes || []).length) faltas.push('O médico ainda não registrou a decisão.');
+    if (!(ctx.avaliacoes || []).length) faltas.push('O retorno do médico ainda não foi registrado.');
     const e = ctx.entrega;
     const decidiu = (ctx.avaliacoes || []).some((a) => a.desfecho === 'nao_aprovado');
     if (!decidiu) {
@@ -164,7 +167,7 @@ export const prontuarioPendente = (pront) => Boolean(pront) && pront.local !== '
  * Rótulo de cada papel nas frases desta máquina de estados. Espelha PAPEIS de js/permissoes.js;
  * fica aqui, repetido, para este arquivo continuar puro e sem import de permissão.
  */
-const PAPEL_ROTULO = { callcenter: 'Call Center', arquivo: 'Arquivo', recepcao: 'Recepção', medico: 'Médico' };
+const PAPEL_ROTULO = { callcenter: 'Call Center', arquivo: 'Arquivo', recepcao: 'Recepção', admin: 'Administrador' };
 
 /**
  * A próxima ação necessária, em uma frase, e de quem é. É o que a tela de detalhe destaca (RF-42).
@@ -176,8 +179,8 @@ export function proximaAcao(sol) {
     em_triagem: [['callcenter'], 'Concluir a triagem e pedir o prontuário.'],
     aguardando_prontuario: [['arquivo'], 'Localizar o prontuário, retirar e entregar à Recepção.'],
     prontuario_em_transito: [['recepcao'], 'Confirmar o recebimento do prontuário.'],
-    prontuario_na_recepcao: [['recepcao'], 'Conferir e encaminhar o caso ao médico.'],
-    aguardando_medico: [['medico'], 'Analisar e registrar a decisão.'],
+    prontuario_na_recepcao: [['recepcao'], 'Conferir o prontuário e levar o caso ao médico.'],
+    com_medico: [['recepcao'], 'Buscar a resposta com o médico e registrá-la no sistema.'],
     aguardando_esclarecimento: [['callcenter', 'recepcao'], 'Prestar o esclarecimento pedido pelo médico.'],
     retorno_disponivel: [['recepcao'], 'Avisar no grupo que o retorno está disponível.'],
     aguardando_contato_paciente: [['callcenter'], sol.tipo === 'pedido_receita' ? 'Avisar o paciente que a receita está pronta.' : 'Comunicar a resposta do médico ao paciente.'],

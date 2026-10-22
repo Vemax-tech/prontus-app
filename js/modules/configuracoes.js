@@ -10,6 +10,9 @@ import { configAtual, salvarConfig } from '../dados.js';
 import { METAS_PADRAO } from '../prazos.js';
 import { start, h, run, pageHead, empty, badge, nota, icon } from '../ui.js';
 
+/** Linha vazia da lista de médicos. */
+const MEDICO_NOVO = () => ({ nome: '', registro: '', especialidade: '' });
+
 /** As etapas que podem ter meta: as terminais não têm, porque nelas nada mais é esperado. */
 const ETAPAS_COM_META = Object.keys(F.ETAPAS).filter((e) => !F.ETAPAS_FIM.includes(e));
 
@@ -25,12 +28,20 @@ export const init = () => start('configuracoes/', 'Configurações', async (ctx,
   }
   const podeEditar = ctx.pode('configuracoes', 'editar');
   const cfg = configAtual();
-  const rascunho = { metas: { ...cfg.metas }, exigirArquivamentoParaConcluir: cfg.exigirArquivamentoParaConcluir };
+  const rascunho = {
+    metas: { ...cfg.metas },
+    exigirArquivamentoParaConcluir: cfg.exigirArquivamentoParaConcluir,
+    medicos: (cfg.medicos || []).map((m) => ({ ...m })),
+  };
 
   const corpo = h('div');
   const avisoSalvar = h('div', { class: 'row', style: 'margin-top:16px;gap:10px;align-items:center' });
 
-  const sujo = () => JSON.stringify(rascunho) !== JSON.stringify({ metas: cfg.metas, exigirArquivamentoParaConcluir: cfg.exigirArquivamentoParaConcluir });
+  const sujo = () => JSON.stringify(rascunho) !== JSON.stringify({
+    metas: cfg.metas,
+    exigirArquivamentoParaConcluir: cfg.exigirArquivamentoParaConcluir,
+    medicos: cfg.medicos || [],
+  });
 
   function pintarBotoes() {
     avisoSalvar.replaceChildren(
@@ -46,6 +57,58 @@ export const init = () => start('configuracoes/', 'Configurações', async (ctx,
         class: 'btn sm', type: 'button',
         onclick: () => { ETAPAS_COM_META.forEach((e) => { rascunho.metas[e] = METAS_PADRAO[e]; }); pintar(); },
       }, 'Voltar aos valores propostos'));
+  }
+
+  /**
+   * A lista de médicos da clínica. Eles NÃO são usuários: não entram no sistema, não têm fila e
+   * não têm senha. Esta lista existe só para a Recepção escolher a quem levou o caso e para o
+   * retorno sair assinado com o nome e o registro certos — sem digitar tudo de novo a cada vez,
+   * que é como nasce "Dra. Helena" numa linha e "helena fontes" na outra.
+   */
+  function painelMedicos() {
+    const linha = (m, i) => h('tr', {},
+      h('td', {}, h('input', {
+        type: 'text', value: m.nome, maxlength: '80', placeholder: 'Dra. Fulana de Tal', style: 'width:100%',
+        disabled: podeEditar ? null : '', 'aria-label': `Nome do médico ${i + 1}`,
+        oninput: (e) => { m.nome = e.target.value; pintarBotoes(); },
+      })),
+      h('td', {}, h('input', {
+        type: 'text', value: m.registro, maxlength: '40', placeholder: 'CRM/SP 000000', style: 'width:100%',
+        disabled: podeEditar ? null : '', 'aria-label': `Registro profissional do médico ${i + 1}`,
+        oninput: (e) => { m.registro = e.target.value; pintarBotoes(); },
+      })),
+      h('td', {}, h('input', {
+        type: 'text', value: m.especialidade || '', maxlength: '60', placeholder: 'Clínica geral', style: 'width:100%',
+        disabled: podeEditar ? null : '', 'aria-label': `Especialidade do médico ${i + 1}`,
+        oninput: (e) => { m.especialidade = e.target.value; pintarBotoes(); },
+      })),
+      h('td', {}, podeEditar
+        ? h('button', {
+          class: 'btn sm danger', type: 'button',
+          onclick: () => { rascunho.medicos.splice(i, 1); pintar(); },
+        }, 'Remover')
+        : null));
+
+    return h('section', { class: 'panel', style: 'margin-top:16px' },
+      h('div', { class: 'ph' },
+        h('div', {},
+          h('h2', {}, 'Médicos da clínica'),
+          h('p', { class: 'micro muted' }, 'Quem atende. Não são usuários do sistema.')),
+        badge(`${rascunho.medicos.length} na lista`, rascunho.medicos.length ? 'info' : 'crit')),
+      h('div', { class: 'pb' },
+        nota('', 'O médico não entra no Prontus: o caso vai até ele em papel, com o prontuário, e a Recepção registra o retorno. Esta lista é só para a Recepção escolher a quem levou e para o registro sair assinado com o nome e o CRM certos. Lista vazia não trava nada — a Recepção digita na hora.'),
+        h('div', { class: 'tw', style: 'margin-top:12px' },
+          h('table', {},
+            h('thead', {}, h('tr', {}, h('th', {}, 'Nome'), h('th', {}, 'Registro profissional'), h('th', {}, 'Especialidade'), h('th', {}, ''))),
+            h('tbody', {}, rascunho.medicos.length
+              ? rascunho.medicos.map(linha)
+              : h('tr', {}, h('td', { colspan: '4', class: 'small muted' }, 'Nenhum médico cadastrado.'))))),
+        podeEditar
+          ? h('button', {
+            class: 'btn sm', type: 'button', style: 'margin-top:12px',
+            onclick: () => { rascunho.medicos.push(MEDICO_NOVO()); pintar(); },
+          }, 'Adicionar médico')
+          : null));
   }
 
   function linhaMeta(etapa) {
@@ -86,6 +149,8 @@ export const init = () => start('configuracoes/', 'Configurações', async (ctx,
                 h('th', {}, 'Etapa'), h('th', {}, 'Meta'), h('th', {}, 'O que o sistema faz'), h('th', {}, 'Proposto'))),
               h('tbody', {}, ETAPAS_COM_META.map(linhaMeta)))))),
 
+      painelMedicos(),
+
       h('section', { class: 'panel', style: 'margin-top:16px' },
         h('div', { class: 'ph' }, h('h2', {}, 'Quando um caso pode ser concluído')),
         h('div', { class: 'pb' },
@@ -107,7 +172,7 @@ export const init = () => start('configuracoes/', 'Configurações', async (ctx,
 
   view.append(
     pageHead('Administração', 'Configurações',
-      'O que a clínica define para si: os prazos que geram alerta e a regra de conclusão.'),
+      'O que a clínica define para si: os prazos que geram alerta, quem atende e a regra de conclusão.'),
     corpo,
     h('p', { class: 'micro muted', style: 'margin-top:20px' }, icon('shield'),
       ' Mudança de configuração entra na auditoria com quem mudou e quando.'));

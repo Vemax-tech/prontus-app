@@ -47,6 +47,11 @@ export const init = () => start('relatorios/', 'Relatórios', async (ctx, view) 
   };
   const tPrimeiro = media(sols.map((s) => ate(s, 'aguardando_prontuario')).filter((x) => x != null));
   const tMedico = media(sols.map((s) => ate(s, 'retorno_disponivel')).filter((x) => x != null));
+  const tComMedico = media(sols.map((s) => {
+    const saiu = eventos.find((x) => x.solicitacao_id === s.id && x.para_etapa === 'com_medico');
+    const voltou = eventos.find((x) => x.solicitacao_id === s.id && x.de_etapa === 'com_medico');
+    return saiu && voltou ? (new Date(voltou.criado_em) - new Date(saiu.criado_em)) / 3600e3 : null;
+  }).filter((x) => x != null));
   const tConclusao = media(sols.filter((s) => s.concluida_em).map((s) => (new Date(s.concluida_em) - new Date(s.criado_em)) / 3600e3));
   const reabertas = sols.filter((s) => s.reaberturas > 0);
 
@@ -77,7 +82,8 @@ export const init = () => start('relatorios/', 'Relatórios', async (ctx, view) 
 
     stats(
       stat({ k: 'Até pedir o prontuário', v: horas(tPrimeiro), c: 'da abertura ao pedido no grupo' }),
-      stat({ k: 'Até a resposta médica', v: horas(tMedico), c: 'da abertura ao retorno disponível' }),
+      stat({ k: 'Até a resposta médica', v: horas(tMedico), c: 'da abertura ao retorno registrado' }),
+      stat({ k: 'Tempo com o médico', v: horas(tComMedico), c: 'da saída da Recepção até o retorno voltar' }),
       stat({ k: 'Até concluir', v: horas(tConclusao), c: `${sols.filter((s) => s.concluida_em).length} solicitações concluídas` }),
       stat({ k: 'Retrabalho', v: reabertas.length, c: 'solicitações reabertas', tipo: reabertas.length ? 'warn' : '' })),
 
@@ -88,7 +94,7 @@ export const init = () => start('relatorios/', 'Relatórios', async (ctx, view) 
     sec('Pendências por equipe', h('div', { class: 'grid g2' },
       h('section', { class: 'card' },
         h('h3', { style: 'margin-bottom:12px' }, 'Tarefas pendentes'),
-        h('ul', { class: 'ul-list' }, ['callcenter', 'arquivo', 'recepcao', 'medico'].map((p) => {
+        h('ul', { class: 'ul-list' }, ['callcenter', 'arquivo', 'recepcao'].map((p) => {
           const n = tarefas.filter((t) => t.papel_responsavel === p && t.estado === 'pendente').length;
           const tot = tarefas.filter((t) => t.papel_responsavel === p).length;
           return h('li', {}, h('div', { class: 'row between' }, h('span', {}, PAPEIS[p]), h('b', {}, `${n} de ${tot}`)), barra(n, Math.max(tot, 1)));
@@ -123,6 +129,6 @@ export const init = () => start('relatorios/', 'Relatórios', async (ctx, view) 
           : h('p', { class: 'small muted' }, 'Todos arquivados.'),
         h('p', { class: 'small muted', style: 'margin-top:10px' }, 'Pendência administrativa, independente do atendimento.')))),
 
-    h('p', { class: 'small muted', style: 'margin-top:24px' }, 'Faltam os indicadores que dependem de meta de prazo — "solicitações atrasadas" e cumprimento de SLA. As metas por etapa ainda não foram definidas pela clínica; sem elas, qualquer número de atraso seria inventado.'),
+    h('p', { class: 'small muted', style: 'margin-top:24px' }, 'O cumprimento de meta por etapa aparece na Visão geral, onde ele leva a uma ação. Aqui ficam os agregados — e a exportação sai identificada por protocolo, nunca por nome de paciente.'),
   );
 });

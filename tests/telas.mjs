@@ -46,7 +46,7 @@ const abrirTela = async (arquivo, fn = 'init', query = '') => {
 
 // ================================================================ 1. telas por papel
 console.log('\n## Telas renderizam para cada papel');
-const TELAS = [['painel.js', 'init'], ['filas.js', 'init'], ['minhafila.js', 'init'], ['solicitacoes.js', 'init'], ['prontuarios.js', 'init'], ['registros.js', 'init'], ['relatorios.js', 'init'], ['permissoes.js', 'init']];
+const TELAS = [['painel.js', 'init'], ['filas.js', 'init'], ['minhafila.js', 'init'], ['solicitacoes.js', 'init'], ['prontuarios.js', 'init'], ['registros.js', 'init'], ['relatorios.js', 'init'], ['permissoes.js', 'init'], ['usuarios.js', 'init'], ['configuracoes.js', 'init']];
 for (const papel of Object.keys(P.PAPEIS)) {
   trocarPapel(papel);
   for (const [arq, fn] of TELAS) {
@@ -71,20 +71,43 @@ check(docs.filter((d) => d.estado === 'substituido').length >= 1, 'a versão ant
 
 // ================================================================ 3. permissões (RN-05, RN-11, RN-18)
 console.log('\n## Permissões: cada papel só faz o que é dele');
-const alvo = sols.find((s) => s.etapa === 'aguardando_medico');
-check(Boolean(alvo), 'existe um caso aguardando médico para testar');
-let r = await D.registrarAvaliacao({ solicitacao_id: alvo.id, desfecho: 'respondido', conteudo_clinico: 'x', papeis: ['recepcao'], ator: 'u-re1' });
-check(r.error?.code === '42501', 'Recepção NÃO registra decisão clínica (RN-11)');
-r = await D.registrarAvaliacao({ solicitacao_id: alvo.id, desfecho: 'respondido', conteudo_clinico: 'x', papeis: ['callcenter'], ator: 'u-cc1' });
-check(r.error?.code === '42501', 'Call Center NÃO registra decisão clínica (RN-11)');
-const outroMedico = alvo.medico_id === 'u-me1' ? 'u-me2' : 'u-me1';
-r = await D.registrarAvaliacao({ solicitacao_id: alvo.id, desfecho: 'respondido', conteudo_clinico: 'x', papeis: ['medico'], ator: outroMedico });
-check(r.error?.code === '42501', 'médico diferente do encaminhado é recusado (RN-10)');
+check(Object.keys(P.PAPEIS).join(',') === 'callcenter,arquivo,recepcao,admin', 'são quatro papéis, e o médico não é um deles');
+const alvo = sols.find((s) => s.etapa === 'com_medico');
+check(Boolean(alvo), 'existe um caso com o médico para testar');
+check(Boolean(alvo.medico_nome) && Boolean(alvo.medico_registro), 'o caso guarda a quem foi levado, por nome e registro');
+let r = await D.registrarAvaliacao({ solicitacao_id: alvo.id, desfecho: 'respondido', conteudo_clinico: 'x', papeis: ['callcenter'], ator: 'u-cc1' });
+check(r.error?.code === '42501', 'Call Center NÃO registra o retorno do médico (RN-11)');
+r = await D.registrarAvaliacao({ solicitacao_id: alvo.id, desfecho: 'respondido', conteudo_clinico: 'x', papeis: ['admin'], ator: 'u-ad1' });
+check(r.error?.code === '42501', 'Administrador NÃO registra o retorno do médico (RN-11)');
+r = await D.registrarAvaliacao({ solicitacao_id: alvo.id, desfecho: 'respondido', conteudo_clinico: 'x', papeis: ['recepcao'], ator: 'u-re1' });
+check(!r.error, 'Recepção registra o retorno, herdando o médico já gravado no caso');
+check(r.data.medico_nome === alvo.medico_nome && r.data.registrado_por === 'u-re1', 'o registro sai assinado: quem decidiu e quem transcreveu');
 check(!P.pode(['callcenter'], 'avaliacao_conteudo'), 'Call Center não lê conteúdo clínico (RN-18)');
-check(!P.pode(['admin_empresa'], 'avaliacao_conteudo'), 'administrador da clínica não lê conteúdo clínico por ser admin');
-check(!P.pode(['admin_tecnico'], 'avaliacao_conteudo'), 'suporte técnico do fornecedor não lê conteúdo clínico por padrão');
-check(P.pode(['medico'], 'avaliacao_conteudo'), 'médico lê o conteúdo clínico');
+check(!P.pode(['admin'], 'avaliacao_conteudo'), 'Administrador não lê conteúdo clínico por administrar');
+check(!P.pode(['admin'], 'tarefa_ver'), 'Administrador não tem fila: acompanha em vez de executar');
+check(P.pode(['admin'], 'usuarios', 'editar') && P.pode(['admin'], 'configuracoes', 'editar') && P.pode(['admin'], 'auditoria'), 'Administrador cria usuários, configura a clínica e vê a auditoria');
+check(P.pode(['recepcao'], 'avaliacao_conteudo'), 'Recepção lê o conteúdo clínico que ela mesma registra');
 check(!P.pode(['arquivo'], 'documento_abrir'), 'arquivo não abre documento clínico');
+
+// ---------------------------------------------------------------- usuários (o super usuário)
+console.log('\n## Usuários: o Administrador cria, edita, desativa e exclui');
+r = await D.criarUsuario({ nome: 'Teste da Silva', email: 't@exemplo.test', papel: 'arquivo', papeis: ['callcenter'], ator: 'u-cc1' });
+check(r.error?.code === '42501', 'só o Administrador cria usuário');
+r = await D.criarUsuario({ nome: 'Teste da Silva', email: 't@exemplo.test', papel: 'arquivo', papeis: ['admin'], ator: 'u-ad1' });
+check(!r.error && r.data.papeis[0] === 'arquivo', 'Administrador cria usuário com um papel');
+const novoU = r.data;
+r = await D.criarUsuario({ nome: 'Outro', email: 'T@EXEMPLO.TEST', papel: 'arquivo', papeis: ['admin'], ator: 'u-ad1' });
+check(Boolean(r.error), 'e-mail repetido é recusado');
+r = await D.excluirUsuario({ id: novoU.id, papeis: ['admin'], ator: 'u-ad1' });
+check(!r.error && r.data.removido, 'quem nunca agiu é excluído de verdade');
+r = await D.excluirUsuario({ id: 'u-re1', papeis: ['admin'], ator: 'u-ad1' });
+check(!r.error && r.data.desativado && r.data.rastro > 0, 'quem tem histórico é DESATIVADO, não apagado: a autoria não se perde');
+r = await D.atualizarUsuario({ id: 'u-re1', ativo: true, papeis: ['admin'], ator: 'u-ad1' });
+check(!r.error && r.data.ativo, 'e pode ser reativado');
+r = await D.excluirUsuario({ id: 'u-ad1', papeis: ['admin'], ator: 'u-ad1' });
+check(Boolean(r.error), 'ninguém exclui a própria conta');
+r = await D.atualizarUsuario({ id: 'u-ad1', papel: 'callcenter', papeis: ['admin'], ator: 'u-ad1' });
+check(Boolean(r.error) && /administrador/i.test(r.error.message), 'o último administrador não pode se rebaixar: a clínica ficaria sem administração');
 
 // ================================================================ 4. custódia do prontuário
 console.log('\n## Prontuário: custódia e confirmação de recebimento');
@@ -153,12 +176,18 @@ const st1 = (await D.obter('solicitacoes', nova.id)).data;
 check(st1.etapa === 'prontuario_em_transito', 'entrega iniciada NÃO conta como concluída (RN-21)');
 await passo('recepção confirma o recebimento', D.moverProntuario({ prontuario_id: nova.prontuario_id, mov: 'recebido', papeis: ['recepcao'], ator: 'u-re1', solicitacao_id: nova.id }));
 await passo('etapa vira prontuário na recepção', D.moverSolicitacao({ id: nova.id, transicao: 'T05', papeis: ['recepcao'], ator: 'u-re1' }));
-r = await D.moverSolicitacao({ id: nova.id, transicao: 'T06', papeis: ['recepcao'], ator: 'u-re1' });
-check(Boolean(r.error), 'não encaminha ao médico sem registrar a conferência');
+r = await D.moverSolicitacao({ id: nova.id, transicao: 'T06', papeis: ['recepcao'], ator: 'u-re1', medico_nome: 'Dra. Helena Fontes' });
+check(Boolean(r.error), 'não leva ao médico sem registrar a conferência');
 await passo('recepção confere', D.moverProntuario({ prontuario_id: nova.prontuario_id, mov: 'conferido', papeis: ['recepcao'], ator: 'u-re1', solicitacao_id: nova.id }));
-await passo('recepção encaminha ao médico', D.moverSolicitacao({ id: nova.id, transicao: 'T06', papeis: ['recepcao'], ator: 'u-re1' }));
-await passo('médico emite a receita', D.registrarAvaliacao({ solicitacao_id: nova.id, desfecho: 'receita_emitida', conteudo_clinico: 'conteúdo fictício', resumo_para_paciente: 'resumo', papeis: ['medico'], ator: 'u-me1' }));
-await passo('etapa vira retorno disponível', D.moverSolicitacao({ id: nova.id, transicao: 'T07', papeis: ['medico'], ator: 'u-me1' }));
+r = await D.moverSolicitacao({ id: nova.id, transicao: 'T06', papeis: ['recepcao'], ator: 'u-re1' });
+check(Boolean(r.error) && /médico/i.test(r.error.message), 'não leva ao médico sem dizer a qual médico');
+await passo('recepção leva ao médico', D.moverSolicitacao({ id: nova.id, transicao: 'T06', papeis: ['recepcao'], ator: 'u-re1', medico_nome: 'Dra. Helena Fontes' }));
+const comMed = (await D.obter('solicitacoes', nova.id)).data;
+check(comMed.etapa === 'com_medico' && comMed.medico_registro.startsWith('CRM'), 'o registro profissional veio da lista de médicos da clínica');
+r = await D.registrarAvaliacao({ solicitacao_id: nova.id, desfecho: 'receita_emitida', conteudo_clinico: 'conteúdo fictício', resumo_para_paciente: 'resumo', papeis: ['callcenter'], ator: 'u-cc1' });
+check(r.error?.code === '42501', 'o Call Center não transcreve o retorno nem no fluxo novo');
+await passo('recepção registra o retorno do médico', D.registrarAvaliacao({ solicitacao_id: nova.id, desfecho: 'receita_emitida', conteudo_clinico: 'conteúdo fictício', resumo_para_paciente: 'resumo', papeis: ['recepcao'], ator: 'u-re1' }));
+await passo('etapa vira retorno disponível', D.moverSolicitacao({ id: nova.id, transicao: 'T07', papeis: ['recepcao'], ator: 'u-re1' }));
 const dossie1 = (await D.dossie(nova.id)).data;
 check(dossie1.documentos.length === 1 && dossie1.documentos[0].estado === 'emitido', 'documento foi criado e está emitido');
 await passo('recepção avisa no grupo', (async () => {
@@ -183,7 +212,8 @@ check(fim.etapa === 'concluida' && fim.desfecho === 'resolvida', 'caso concluíd
 console.log('\n## Trilha paralela: devolução funciona com o caso JÁ concluído (RF-17)');
 const pr = (await D.obter('prontuarios', nova.prontuario_id)).data;
 check(pr.local !== 'arquivo', 'o prontuário ainda está fora do arquivo com o caso concluído');
-await passo('recepção devolve', D.moverProntuario({ prontuario_id: nova.prontuario_id, mov: 'devolvido_medico', papeis: ['recepcao'], ator: 'u-re1', solicitacao_id: nova.id }).then((x) => (x.error ? D.moverProntuario({ prontuario_id: nova.prontuario_id, mov: 'devolvido', papeis: ['recepcao'], ator: 'u-re1', solicitacao_id: nova.id }) : D.moverProntuario({ prontuario_id: nova.prontuario_id, mov: 'devolvido', papeis: ['recepcao'], ator: 'u-re1', solicitacao_id: nova.id }))));
+await D.moverProntuario({ prontuario_id: nova.prontuario_id, mov: 'devolvido_medico', papeis: ['recepcao'], ator: 'u-re1', solicitacao_id: nova.id });
+await passo('recepção devolve ao arquivo', D.moverProntuario({ prontuario_id: nova.prontuario_id, mov: 'devolvido', papeis: ['recepcao'], ator: 'u-re1', solicitacao_id: nova.id }));
 await passo('arquivo recebe a devolução', D.moverProntuario({ prontuario_id: nova.prontuario_id, mov: 'recebido_devolucao', papeis: ['arquivo'], ator: 'u-ar1', solicitacao_id: nova.id }));
 await passo('arquivo arquiva', D.moverProntuario({ prontuario_id: nova.prontuario_id, mov: 'arquivado', papeis: ['arquivo'], ator: 'u-ar1', solicitacao_id: nova.id, nota: 'estante A-10' }));
 const prFim = (await D.obter('prontuarios', nova.prontuario_id)).data;
@@ -202,7 +232,7 @@ check(Boolean(r.error), 'cancelar sem motivo é recusado');
 // ---------------------------------------------------------------- auditoria de leitura
 console.log('\n## Auditoria registra LEITURA de dado clínico');
 const audAntes = (await D.listar('auditoria')).data.length;
-D.auditarLeitura(['medico'], 'avaliacao_medica', nova.id, 'u-me1');
+D.auditarLeitura(['recepcao'], 'avaliacao_medica', nova.id, 'u-re1');
 const audDepois = (await D.listar('auditoria')).data;
 check(audDepois.length === audAntes + 1 && audDepois.at(-1).acao === 'leitura', 'leitura de avaliação entra na auditoria');
 
@@ -210,7 +240,13 @@ check(audDepois.length === audAntes + 1 && audDepois.at(-1).acao === 'leitura', 
 console.log('\n## Telas continuam íntegras depois de exercitar o fluxo');
 trocarPapel('callcenter');
 await abrirTela('painel.js');
-check(body().includes('Visão geral'), 'painel reabre');
+check(body().includes('Olá'), 'a tela inicial do Call Center reabre, com a vez da equipe');
+trocarPapel('admin');
+await abrirTela('painel.js');
+const painelAdmin = body();
+check(painelAdmin.includes('Visão geral') && painelAdmin.includes('Quem tem acesso'), 'o Administrador vê o painel completo, com a equipe');
+check(painelAdmin.includes('Últimas ações registradas'), 'e as últimas ações registradas');
+trocarPapel('callcenter');
 await abrirTela('solicitacao.js', 'initFicha', `solicitacoes/detalhe.html?id=${nova.id}`);
 check(body().includes('Próxima ação'), 'detalhe reabre e mostra a próxima ação');
 

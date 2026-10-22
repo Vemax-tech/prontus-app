@@ -25,15 +25,25 @@ Não precisa de login, de internet nem de banco. Os dados vivem em memória: o b
 
 ## O que mostrar, em 12 minutos
 
-### 1. A troca de papel (30 s) — o truque que sustenta o resto
-Na barra superior, à direita, o seletor de papel. Troque entre Call Center, Arquivo, Recepção e Médico. O menu muda, a fila muda, os botões mudam, e o contador da "Minha fila" acompanha.
+### 1. A troca de papel (45 s) — o truque que sustenta o resto
+Na barra superior, à direita, o seletor de papel. Troque entre **Call Center, Arquivo, Recepção e Administrador** — são quatro papéis, quatro fluxos de trabalho. A cada troca o sistema leva à **tela inicial daquele papel**: o menu muda, a fila muda, os botões mudam.
 
-Fale: *"cada pessoa vê só o que é dela. Na demonstração eu troco no seletor; em produção vem do login, e o servidor é que decide — não a tela."*
+Fale: *"cada pessoa vê só o que é dela, e não precisa aprender a ignorar menu. Na demonstração eu troco no seletor; em produção vem do login, e o servidor é que decide — não a tela."*
 
-### 2. Visão geral (1 min)
-Os números saem dos registros. Mostre que **cada indicador diz o critério de contagem embaixo**.
+Se perguntarem pelo médico, responda já aqui — é o ponto que mais surpreende:
 
-Aponte de propósito o bloco "Mais tempo parado na etapa": *"não existe indicador de 'atrasada' aqui, porque vocês ainda não definiram meta de prazo por etapa. Eu não invento número — mostro o tempo real e espero a meta."* Isso costuma valer mais que um dashboard cheio.
+> *"O médico não entra no sistema. Ele continua no processo exatamente como hoje: a Recepção leva a ficha impressa e o prontuário até a sala e volta com a resposta. O que o sistema faz é marcar que o caso saiu, a quem foi, há quanto tempo está lá, e guardar a resposta assinada com o nome e o CRM de quem decidiu. Uma pessoa a menos para treinar, uma senha a menos para gerenciar, e nenhum passo do processo perdido."*
+
+### 2. Visão geral — duas telas sob o mesmo endereço (1 min 30 s)
+Como **Call Center**: a tela inicial é "A sua vez". Os indicadores **são as filas dele**, cada um leva ao trabalho que conta, e o critério embaixo é a própria definição da fila.
+
+Fale: *"quem opera abre o sistema para saber o que fazer agora. Volume, média e pendência de outra equipe são ruído nessa tela."*
+
+Troque para **Administrador**: o mesmo endereço, outra tela. O painel inteiro — todos os indicadores, onde o trabalho empoça, pendência por equipe, volume, tempos, quem tem acesso e as últimas ações registradas.
+
+Fale: *"quem administra abre o sistema para saber como a clínica está. E repare: ele não tem fila. Quem cobra não disputa trabalho com quem é cobrado."*
+
+Mostre que **cada indicador diz o critério de contagem embaixo**. No bloco de pedidos parados, aponte que a meta vem de **Configurações** e é da clínica: *"o sistema não inventa prazo. Ele cobra o que vocês definirem."*
 
 ### 3. Fluxo 2 de ponta a ponta (5 min) — o coração da apresentação
 Como **Call Center**: Solicitações → *Pedido de receita*. Escolha um paciente, escreva o relato, registre.
@@ -46,11 +56,16 @@ Troque para **Arquivo**: a fila dele já tem o pedido. Localizar → retirar →
 
 - **Pare aqui.** A solicitação ficou em *Prontuário em trânsito*, não em "entregue". Diga: *"a entrega não está concluída porque o Silvio começou a andar. Só quem recebe confirma."*
 
-Troque para **Recepção**: confirme o recebimento. Tente encaminhar ao médico **antes** de conferir — o sistema recusa. Confira e encaminhe.
+Troque para **Recepção**: confirme o recebimento. Tente levar ao médico **antes** de conferir — o sistema recusa. Confira e clique em *Levar ao médico*.
 
-Troque para **Médico**: registre a decisão. Mostre os dois campos — conteúdo clínico e *resumo para o paciente*.
+- O formulário pergunta **a quem** o caso foi levado, escolhendo da lista de médicos da clínica. Diga: *"o médico não clica em nada. Mas o sistema precisa saber com quem o caso está, senão a etapa 'Com o médico' não quer dizer nada — e é ela que dispara o alerta de 2 horas."*
+- A etapa vira **Com o médico**, e a tela diz, em letras, que o caso está fisicamente fora do sistema.
 
-Troque para **Recepção**: avise no grupo. Troque para **Call Center**: avise o paciente, escolha **entrega digital**.
+Ainda como **Recepção**: volte da sala e clique em *Registrar o retorno*. Mostre que o formulário já vem com o nome e o CRM preenchidos, e os dois campos de texto — conteúdo clínico e *resumo para o paciente*.
+
+Fale: *"a decisão é do médico; o registro é de quem foi até a sala. Por isso o registro sai assinado duas vezes: quem decidiu e quem transcreveu. A auditoria responde às duas perguntas separadamente."*
+
+Ainda como **Recepção**: avise no grupo. Troque para **Call Center**: avise o paciente, escolha **entrega digital**.
 
 - Registre só a **tentativa de envio** e tente concluir: o sistema recusa, dizendo que tentativa não é entrega.
 - Confirme o recebimento. Agora conclui.
@@ -62,18 +77,28 @@ Diga: *"isto é o ponto que mais confunde num sistema mal feito: concluir o aten
 
 Depois devolva e arquive como Arquivo, para fechar.
 
-### 5. Permissões (2 min) — o argumento de segurança
-Barra superior → **Permissões**. A matriz inteira na tela.
+### 5. Usuários e permissões (3 min) — o argumento de segurança
+Como **Administrador**, duas telas que só ele tem.
+
+**Usuários.** Crie alguém com um papel; mostre que ele aparece na contagem por papel. Depois tente **excluir a Carla (Recepção)** e leia a mensagem em voz alta:
+
+> *"Ela foi desativada em vez de excluída, porque tem registros no histórico. A linha do tempo de um atendimento não pode passar a dizer '—' no lugar de quem fez. Quem nunca agiu, aí sim, some de verdade."*
+
+Tente ainda rebaixar o próprio Administrador: o sistema recusa, porque a clínica ficaria sem administração.
+
+Fale: *"isto é o que vocês pediram do super usuário: criar e tirar acesso sem abrir chamado comigo. E cada uma dessas ações entra na auditoria."*
+
+**Permissões.** A matriz inteira na tela — quatro papéis, quatro colunas, cabe sem rolar.
 
 Quatro frases que valem a reunião:
-- O **Call Center** registra e acompanha, mas **não lê conteúdo clínico**.
+- O **Call Center** registra e acompanha, mas **não lê conteúdo clínico** — ele usa o *resumo para o paciente*.
 - O **Arquivo** vê o mínimo para localizar um prontuário.
-- O **administrador da clínica não ganha acesso clínico por ser administrador**.
-- O **suporte técnico da VEMAX não vê dado clínico por padrão**.
+- Só a **Recepção** lê o conteúdo clínico, e é ela quem o registra: quem transcreve precisa ler, mais ninguém precisa.
+- O **Administrador não ganha acesso clínico por administrar** — nem sendo o super usuário. Coordenar não é motivo clínico.
 
 Role até **Auditoria de acesso**: dado de saúde exige registrar a **leitura**, não só a alteração.
 
-Para demonstrar ao vivo: como **Médico**, abra uma avaliação; volte em Permissões e mostre a linha nova na auditoria.
+Para demonstrar ao vivo: como **Recepção**, abra o retorno de um caso; volte em Permissões como Administrador e mostre a linha nova na auditoria.
 
 ### 6. Correção de receita com versão (1 min)
 Procure a solicitação com receita corrigida (filtro por tipo *Dúvida / correção*). Em **Documentos**, as duas versões coexistem: a v1 marcada como *substituída*, a v2 como *emitida*.
@@ -100,6 +125,8 @@ Tenha à mão a especificação escrita (perguntas abertas e backlog por fases).
 | "O WhatsApp manda sozinho?" | Não, e de propósito. Hoje o sistema **registra** o que foi feito. Automação de grupo depende do provedor e é tecnicamente duvidosa — precisa confirmar antes de prometer. |
 | "Dá para o paciente acessar?" | Não está no escopo aprovado. O paciente é quem liga; não tem conta. |
 | "A IA emite a receita?" | Não. Decisão clínica é exclusiva do profissional, e nenhuma função de IA toca isso. |
+| "Por que o médico não entra no sistema?" | Porque ele já não entra hoje, e forçar isso seria o jeito mais rápido de o projeto não sair do papel. O caso vai até ele impresso, com o prontuário. O sistema marca a saída, cobra o prazo e guarda a resposta assinada com nome e CRM. Se um dia vocês quiserem o médico dentro, é um papel a mais na matriz — não uma reescrita. |
+| "Quem pode criar usuário?" | Só o Administrador da clínica, na tela **Usuários**. Sem chamado com o fornecedor, e cada mudança entra na auditoria. |
 | "E se o prontuário não for encontrado?" | Existe o registro *Não localizado*, que abre pendência e avisa o Call Center. Mas o procedimento real de vocês nesse caso continua sendo uma pergunta aberta. |
 | "Onde ficam os dados?" | Na demonstração, em memória, em nada. Em produção, Postgres gerenciado em São Paulo, com acesso por papel verificado no servidor. |
 | "Quanto custa?" | A infraestrutura de produção exige plano pago (projeto gratuito pausa sozinho e não tem backup com retenção). Valor conforme a proposta. |
@@ -108,5 +135,6 @@ Tenha à mão a especificação escrita (perguntas abertas e backlog por fases).
 
 - Não diga que está "pronto para usar". Está pronto para **ver**.
 - Não prometa integração de WhatsApp.
-- Não invente prazo de etapa: a meta não existe ainda.
+- Não apresente as metas de prazo como recomendação clínica: são um ponto de partida, e a tela de Configurações diz isso em letras. Quem define é a clínica.
+- Não diga que "tirou o médico" sem completar a frase. Ele saiu **do sistema**, não do processo — a diferença é a reunião inteira.
 - Não use dado real de paciente para "ficar mais convincente". Além de errado, é exatamente o contrário do que você está vendendo.

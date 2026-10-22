@@ -95,7 +95,7 @@ export function telaDeFilas(modo) {
     // exemplo, aceita classificar numa triagem OU pedir o prontuário — duas saídas legítimas,
     // mas só uma é o que acontece sempre. As outras continuam no detalhe, onde há espaço para
     // explicar o que cada uma faz.
-    const t = F.transicoesDe(it, ctx.papeis, ctx.ator).find((x) => x.principal);
+    const t = F.transicoesDe(it, ctx.papeis).find((x) => x.principal);
     if (!t) return null;
     const direto = !t.exigeComunicacao && !t.exigeMotivo && !t.exigeConferencia
       && !['T07', 'T08', 'T12', 'T14'].includes(t.id) && t.para !== 'concluida';
@@ -217,7 +217,7 @@ export function telaDeFilas(modo) {
     pageHead(PAPEIS[papel], titulo, sub),
     novidades.el,
     !filas.length
-      ? empty('Este papel não participa do fluxo de atendimento. Troque de papel na barra superior para ver as outras filas.')
+      ? empty('Este papel não tem fila: ele acompanha o trabalho em vez de executá-lo. A visão dele é a Visão geral, a lista de solicitações e os relatórios.')
       : h('div', { class: 'split' }, rail, corpo),
     // Por que o total acima pode ser menor que a soma dos números à esquerda: as filas são
     // leituras diferentes do mesmo trabalho e se cruzam de propósito. O total conta casos, não
