@@ -1,26 +1,14 @@
 // PRONTUS — qual papel está usando o sistema agora.
 //
-// NA DEMONSTRAÇÃO o papel é escolhido num seletor na barra superior, para mostrar as visões das
-// quatro equipes na hora, sem login. EM PRODUÇÃO isto desaparece: o papel vem da tabela de papéis
-// do usuário, pela sessão autenticada, e o navegador não escolhe nada (ver js/permissoes.js).
+// O papel vem da conta que entrou (js/auth.js → tabela `perfis`), nunca de uma escolha na tela.
+// Mexer no armazenamento do navegador para trocar de papel só estragaria a própria tela: a cada
+// página o papel é lido de novo no servidor e, nos dados de verdade, quem recusa é a RLS do banco.
 import { PAPEIS } from './permissoes.js';
+import { perfilAtual } from './auth.js';
 
-const CHAVE = 'prontus_papel';
-/** Quem "entra" em cada papel na demonstração (usuários fictícios de js/dados.js). */
-const USUARIO_DO_PAPEL = {
-  callcenter: 'u-cc1', arquivo: 'u-ar1', recepcao: 'u-re1', admin: 'u-ad1',
-};
-export const PAPEL_PADRAO = 'callcenter';
-
-export function papelAtual() {
-  try { const p = sessionStorage.getItem(CHAVE); if (p && PAPEIS[p]) return p; } catch { /* sem storage */ }
-  return PAPEL_PADRAO;
-}
-export function definirPapel(p) {
-  if (!PAPEIS[p]) return;
-  try { sessionStorage.setItem(CHAVE, p); } catch { /* sem storage: vale só esta aba */ }
-}
-/** Lista de papéis do usuário atual. Em produção pode ter mais de um; na demonstração, um por vez. */
-export const papeisAtuais = () => [papelAtual()];
-export const atorAtual = () => USUARIO_DO_PAPEL[papelAtual()];
+/** null = ninguém entrou. A guarda de js/boot.js impede uma tela de chegar aqui sem sessão. */
+export const papelAtual = () => perfilAtual()?.papel ?? null;
+/** Lista de papéis do usuário atual. Em produção pode ter mais de um; hoje, um por conta. */
+export const papeisAtuais = () => { const p = papelAtual(); return p ? [p] : []; };
+export const atorAtual = () => perfilAtual()?.id ?? null;
 export { PAPEIS };

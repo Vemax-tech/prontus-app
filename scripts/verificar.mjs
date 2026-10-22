@@ -21,7 +21,7 @@ function listar(dir, ok) {
   const out = [];
   if (!existsSync(dir)) return out;
   for (const nome of readdirSync(dir)) {
-    if (['node_modules', '.git', '.wrangler'].includes(nome)) continue;
+    if (['node_modules', '.git', '.wrangler', 'vemax-skills', 'supabase'].includes(nome)) continue;
     const p = path.join(dir, nome);
     if (statSync(p).isDirectory()) out.push(...listar(p, ok));
     else if (ok(p)) out.push(p);
