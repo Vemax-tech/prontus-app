@@ -152,7 +152,11 @@ Clínico e denso, em **dois temas**. Quem usa isto passa o dia na tela: a inform
 | Estados | ok `#1E9A4B` · atenção `#E3A92F` · crítico `#FE6A7B` | ok `#157F4F` · atenção `#B4820A` · crítico `#BC2342` |
 | Barras (magnitude) | rampa petróleo `#2A6274` → `#7CC4D8` | `#7EB6C4` → `#115A6B` |
 
-Tipografia e geometria **não mudam** com o tema: Inter Tight (interface), Instrument Serif (assinatura), IBM Plex Mono (códigos e números); raio 3 px em campos e botões, 6 px em painéis; fio de 1 px em vez de sombra; sem brilho, sem desfoque. O monograma é o dossiê e a trilha que a solicitação percorre.
+Tipografia e geometria **não mudam** com o tema: Inter Tight (interface), Instrument Serif (assinatura), IBM Plex Mono (códigos e números). O raio segue a hierarquia da peça — 4 px em etiquetas, 6 px em campos e botões, 10 px em painéis e janelas —, o fio de 1 px separa e uma sombra mínima só sugere o plano do painel sobre o papel; sem brilho, sem desfoque. O monograma é o dossiê e a trilha que a solicitação percorre.
+
+**Rótulo em caixa normal.** Cabeçalho de tabela, campo, indicador e olho de página eram caixa alta de 11 px; agora são frases de 12–13 px em tinta secundária. O que separa rótulo de dado é o tom e o peso, não o grito — e caixa alta se lê pela silhueta do bloco, mais devagar.
+
+**Controle no tamanho do ponteiro.** Com mouse, botão e campo têm 34 px, pela densidade; em tela de toque crescem para 44 px, o alvo mínimo do WCAG. É um token (`--h-ctl`), não uma segunda folha de estilo.
 
 Cada estado tem quatro papéis, e eles não são a mesma cor de propósito: `--ok` é o **sinal** (ponto, barra, número), `--ok-ink` é a **tinta** sobre o fundo da etiqueta, `--ok-wash` o fundo e `--ok-line` a borda. Separar sinal de tinta é o que evita ter de escurecer o sinal só para o texto da etiqueta caber no contraste — foi exatamente isso que fazia o âmbar encostar no crítico na simulação de deuteranopia.
 
@@ -179,6 +183,8 @@ Tudo vive em `css/tokens.css`, e a verificação recusa qualquer token usado num
 4. **No detalhe, a próxima ação e os botões dela no mesmo bloco.** Ler o que falta e fazer o que falta no mesmo lugar.
 5. **Cor é sinal.** Fora das etiquetas de estado e da marca, é tinta sobre papel.
 6. **Fila atual e Minha fila são duas telas, não duas abas.** Pegar trabalho e tocar o que já é seu são dois momentos diferentes do dia; o número de cada uma fica no menu, e cada número conta exatamente o que a sua tela mostra.
+7. **O celular é uma tela de verdade, não a de mesa espremida.** A faixa de demonstração cabe numa linha (antes ocupava quase metade da tela, fixa); as filas viram um trilho de chips; toda tabela vira uma lista de cartões "rótulo · valor", sem os campos vazios, com a ordenação numa fileira rolável; filtros recolhem atrás de um botão que conta os que estão em uso; tema e Configurações vão para a gaveta de navegação; e a janela modal sobe da borda de baixo, ao alcance do polegar.
+8. **Teclado e leitor de tela.** O primeiro Tab de toda página é "Pular para o conteúdo"; a janela modal prende o foco enquanto está aberta e o devolve a quem a abriu; campo recusado ganha `aria-invalid`; a tabela em cartões mantém os papéis ARIA de tabela, que a troca de `display` apagaria.
 
 ---
 

@@ -112,14 +112,36 @@ export function criarRun(onNegado) {
   };
 }
 
-/** onClose roda sempre que a janela fecha (botão, Esc ou clique fora). Esc fecha só a janela de cima. */
+/**
+ * onClose roda sempre que a janela fecha (botão, Esc ou clique fora). Esc fecha só a janela de cima.
+ *
+ * O foco fica PRESO na janela enquanto ela está aberta (Tab no último campo volta ao primeiro) e
+ * VOLTA para quem a abriu ao fechar. Sem isso, quem navega por teclado seguia tabulando por trás
+ * do véu, e ao fechar caía no topo da página — longe da linha da fila em que estava.
+ */
+const FOCAVEIS = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 export function modal(title, body, actions, onClose) {
+  const origem = document.activeElement;
   const ov = h('div', { class: 'ov', role: 'dialog', 'aria-modal': 'true', 'aria-label': title });
-  const esc = (e) => e.key === 'Escape' && [...document.querySelectorAll('.ov')].pop() === ov && close();
-  const close = () => { if (!ov.isConnected) return; ov.remove(); document.removeEventListener('keydown', esc); onClose?.(); };
-  document.addEventListener('keydown', esc);
+  const deCima = () => [...document.querySelectorAll('.ov')].pop() === ov;
+  const tecla = (e) => {
+    if (!deCima()) return;
+    if (e.key === 'Escape') { close(); return; }
+    if (e.key !== 'Tab') return;
+    const f = [...box.querySelectorAll(FOCAVEIS)].filter((el) => !el.hidden && el.getClientRects().length);
+    if (!f.length) { e.preventDefault(); return; }
+    const [primeiro, ultimo] = [f[0], f[f.length - 1]];
+    if (e.shiftKey && document.activeElement === primeiro) { e.preventDefault(); ultimo.focus(); }
+    else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primeiro.focus(); }
+  };
+  const close = () => {
+    if (!ov.isConnected) return;
+    ov.remove(); document.removeEventListener('keydown', tecla); onClose?.();
+    if (origem?.isConnected && typeof origem.focus === 'function') origem.focus();
+  };
+  document.addEventListener('keydown', tecla);
   ov.addEventListener('mousedown', (e) => e.target === ov && close());
-  const box = h('div', { class: 'modal' }, h('h2', {}, title), body, actions(close));
+  const box = h('div', { class: 'modal', tabindex: '-1' }, h('h2', {}, title), body, actions(close));
   ov.append(box); document.body.append(ov);
   (box.querySelector('input,select,textarea,button') || box).focus();
   return close;
@@ -175,9 +197,15 @@ export function formModal({ title, fields, onSubmit, validate, onClose, extras, 
   // ATUAIS. É assim que um "copiar" ou um "abrir no WhatsApp" leva o texto como a pessoa acabou
   // de ajustá-lo, e não o texto com que o formulário nasceu.
   if (extras) form.append(extras(form, (nome) => form.elements[nome]?.value ?? ''));
-  const err = h('p', { class: 'err', role: 'alert', hidden: true });
+  const err = h('p', { class: 'err', id: 'f_erro', role: 'alert', hidden: true });
   form.append(err);
-  const fail = (msg, el) => { err.textContent = msg; err.hidden = false; el?.focus(); };
+  // O campo recusado ganha aria-invalid (borda de erro no CSS e aviso ao leitor de tela) e o perde
+  // na próxima tentativa: o erro aponta para um campo, não para o formulário inteiro.
+  const fail = (msg, el) => {
+    form.querySelectorAll('[aria-invalid]').forEach((x) => x.removeAttribute('aria-invalid'));
+    err.textContent = msg; err.hidden = false;
+    if (el) { el.setAttribute('aria-invalid', 'true'); el.setAttribute('aria-errormessage', 'f_erro'); el.focus(); }
+  };
   return modal(title, form, (close) => {
     const save = h('button', { class: 'btn primary', type: 'button' }, submitLabel);
     const go = async () => {
@@ -204,6 +232,7 @@ export function formModal({ title, fields, onSubmit, validate, onClose, extras, 
       const msg = validate?.(vals);
       if (msg) return fail(msg);
       err.hidden = true; save.disabled = true;
+      form.querySelectorAll('[aria-invalid]').forEach((x) => x.removeAttribute('aria-invalid'));
       let ok;
       try { ok = await onSubmit(vals); } catch (e) { console.error(e); toast(mensagemErro(e), true); ok = false; }
       save.disabled = false;
