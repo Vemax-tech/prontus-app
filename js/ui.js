@@ -12,7 +12,7 @@ import { dadosDasFilas, contarFilas } from './filas.js';
 import { temaAtual, alternarTema, TEMAS } from './tema.js';
 import { MARCA, MONOGRAMA } from './marca.js';
 
-export { instalarDom, h, fmtDate, linkSeguro, toast, copyText, modal, confirmDlg, formModal, tabs, qs } from './base/dom.js';
+export { instalarDom, h, fmtDate, linkSeguro, toast, copyText, modal, confirmDlg, formModal, tabs, qs, botaoOcupado } from './base/dom.js';
 export { dataTable, filtros, contem, baixarCsv } from './base/tabela.js';
 
 const ROOT = new URL('../', import.meta.url).href;
@@ -34,6 +34,8 @@ const ICONS = {
   alert: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
   refresh: '<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>',
   arrow: '<path d="M5 12h14M13 5l7 7-7 7"/>',
+  chevron: '<path d="m6 9 6 6 6-6"/>',
+  olho: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   print: '<path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
   sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
@@ -66,6 +68,61 @@ export function stat({ k, v, c, tipo = '', href, onclick, on }) {
 }
 /** Linha de indicadores: um painel dividido por fios, não vários cartões soltos. */
 export const stats = (...kids) => h('div', { class: 'stats' }, kids);
+
+/**
+ * Linha de fila que ABRE NO LUGAR.
+ *
+ * O problema que ela resolve: a linha da fila diz o protocolo e o que falta, mas não diz de QUEM
+ * é o caso nem o que o paciente pediu. Para descobrir isso era preciso trocar de tela, ler, e
+ * voltar — e quem está esvaziando uma fila de dezesseis itens faz isso dezesseis vezes. Agora a
+ * linha abre embaixo de si mesma, com o relato, o paciente, o prontuário e as ações.
+ *
+ * O conteúdo é montado só na primeira abertura: vinte linhas fechadas não pagam o preço de vinte
+ * detalhes que ninguém pediu.
+ *
+ * `abertos` é um Set de ids mantido PELA TELA, não aqui: toda ação redesenha a lista, e sem isso
+ * o que estava aberto se fecharia sozinho a cada clique — exatamente no momento em que a pessoa
+ * está lendo aquilo.
+ *
+ * `montarLinha(gatilho)` recebe o botão de abrir, para a tela decidir onde ele entra na linha.
+ */
+export function linhaExpansivel({ id, abertos, montarLinha, montarCorpo, rotulo = 'Ver o caso sem sair da fila' }) {
+  const painelId = 'peek-' + String(id).replace(/[^\w-]/g, '');
+  const corpo = h('div', { class: 'peek', id: painelId });
+  const wrap = h('div', { class: 'itemwrap' });
+  let montado = false;
+
+  const gatilho = h('button', {
+    class: 'chev', type: 'button', 'aria-controls': painelId, 'aria-label': rotulo, title: rotulo,
+    onclick: (e) => { e.stopPropagation(); alternar(); },
+  }, icon('chevron'));
+
+  function aplicar(aberto) {
+    if (aberto && !montado) { montado = true; corpo.replaceChildren(montarCorpo()); }
+    corpo.hidden = !aberto;
+    wrap.classList.toggle('aberto', aberto);
+    gatilho.setAttribute('aria-expanded', String(aberto));
+  }
+  function alternar() {
+    const vai = corpo.hidden;
+    if (vai) abertos.add(id); else abertos.delete(id);
+    aplicar(vai);
+  }
+
+  const item = montarLinha(gatilho);
+  item.classList.add('expansivel');
+  // Clicar na parte vazia da linha também abre. O `closest` é o que impede isto de roubar o
+  // clique do link do protocolo, do botão de assumir ou do próximo passo.
+  item.addEventListener('click', (e) => { if (!e.target.closest('a, button, input, select, textarea, label')) alternar(); });
+
+  wrap.append(item, corpo);
+  aplicar(abertos.has(id));
+  return wrap;
+}
+
+/** Par rótulo/valor do detalhe que abre na linha. Vazio não vira linha: '—' ocupa sem informar. */
+export const peekCampo = (rotulo, valor) => (valor == null || valor === '' ? null
+  : h('div', { class: 'pk' }, h('span', {}, rotulo), h('div', {}, valor)));
 
 /** Barra de magnitude: uma série, cor constante, comprimento proporcional. */
 export const barra = (n, max, tipo = '') => h('div', { class: 'bar' + (tipo ? ' ' + tipo : ''), role: 'presentation' },

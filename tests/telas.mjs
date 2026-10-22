@@ -69,6 +69,46 @@ const { data: docs } = await D.listar('documentos');
 check(docs.some((d) => d.versao === 2 && d.substitui_id), 'há receita corrigida em 2ª versão, com a 1ª preservada');
 check(docs.filter((d) => d.estado === 'substituido').length >= 1, 'a versão anterior ficou marcada como substituída');
 
+// ================================================================ 2b. interface
+//
+// jsdom não calcula layout, então nenhum teste aqui vê uma etiqueta vazando de um painel. O que
+// ELE vê é a CAUSA: a linha de caso é uma grade de três colunas, e ela foi parar na coluna lateral
+// de 340 px, onde o texto quebrava uma palavra por linha. A regra que isso vira é estrutural —
+// lista de caso mora na coluna larga — e é essa que o teste segura.
+console.log('\n## Interface: onde a linha de caso mora, e como ela abre');
+const doc = dom.window.document;
+const clicar = (el) => el.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+
+trocarPapel('recepcao');
+await abrirTela('painel.js');
+const colunaLarga = doc.querySelector('.det > .main');
+const colunaEstreita = doc.querySelector('.det > .aside');
+check(Boolean(colunaLarga?.querySelector('.item')), 'a tela inicial da equipe põe os casos na coluna larga');
+check(!colunaEstreita?.querySelector('.item'), 'e nenhum caso na coluna estreita, onde a linha de três colunas espremia');
+
+const inv = colunaLarga.querySelector('.itemwrap');
+check(Boolean(inv), 'cada caso vem num invólucro que abre');
+const gatilho = inv.querySelector('.chev');
+const detalhe = inv.querySelector('.peek');
+check(Boolean(gatilho) && Boolean(detalhe), 'com gatilho e painel de detalhe');
+check(detalhe.hidden && gatilho.getAttribute('aria-expanded') === 'false', 'nasce fechado, e o aria-expanded diz isso');
+clicar(gatilho);
+check(!detalhe.hidden && gatilho.getAttribute('aria-expanded') === 'true', 'o clique abre e atualiza o aria-expanded');
+check(detalhe.textContent.trim().length > 20, 'o detalhe só é montado na primeira abertura, e vem com conteúdo');
+clicar(gatilho);
+check(detalhe.hidden, 'o segundo clique fecha');
+
+await abrirTela('filas.js');
+const filtro = doc.querySelector('.qfind input');
+check(Boolean(filtro), 'a fila tem filtro rápido');
+check(Boolean(doc.querySelector('.itemwrap .chev')), 'e as linhas da fila também abrem no lugar');
+const antesDoFiltro = doc.querySelectorAll('.qlista .itemwrap').length;
+filtro.value = 'zzqqxx-nada-casa';
+filtro.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+check(antesDoFiltro > 0 && doc.querySelectorAll('.qlista .itemwrap').length === 0, 'filtrar por algo inexistente esvazia a lista');
+check(doc.querySelector('.qfind input') === filtro, 'o campo do filtro é o MESMO nó depois de redesenhar a lista — é isso que não deixa o foco escapar a cada tecla');
+trocarPapel('callcenter');
+
 // ================================================================ 3. permissões (RN-05, RN-11, RN-18)
 console.log('\n## Permissões: cada papel só faz o que é dele');
 check(Object.keys(P.PAPEIS).join(',') === 'callcenter,arquivo,recepcao,admin', 'são quatro papéis, e o médico não é um deles');

@@ -68,6 +68,32 @@ export function toast(msg, err = false) {
 export const copyText = async (t) => { try { await navigator.clipboard.writeText(t); toast('Copiado.'); } catch { toast('Não foi possível copiar automaticamente.', true); } };
 
 /**
+ * Botão que mostra que está trabalhando e recusa o segundo clique enquanto o primeiro não voltou.
+ *
+ * Num sistema em que cada clique muda o estado de um atendimento, o intervalo entre clicar e a
+ * tela responder é onde nascem os registros em dobro: a pessoa não vê nada acontecer e clica de
+ * novo. Aqui o próprio botão vira o indicador — `data-ocupado` troca o rótulo por um disco que
+ * gira, SEM mudar a largura, para a fila não dançar embaixo do cursor.
+ *
+ * `aria-busy` conta a mesma coisa a quem usa leitor de tela, e o botão volta ao normal só se
+ * ainda estiver na página: quando a ação redesenha a tela, este nó já não existe.
+ */
+export function botaoOcupado(conteudo, aoClicar, props = {}) {
+  const b = h('button', {
+    class: 'btn sm', type: 'button', ...props,
+    onclick: async (e) => {
+      if (b.dataset.ocupado) return;
+      b.dataset.ocupado = '1';
+      b.setAttribute('aria-busy', 'true');
+      try { await aoClicar(e); } finally {
+        if (b.isConnected) { delete b.dataset.ocupado; b.removeAttribute('aria-busy'); }
+      }
+    },
+  }, conteudo);
+  return b;
+}
+
+/**
  * Monta o `run(promise, okMsg)` de uma área: aguarda uma promise do Supabase, mostra erro amigável
  * e devolve os dados (ou null). `onNegado` é chamado quando o servidor recusa por permissão (42501),
  * para a área registrar o evento de segurança do jeito dela.

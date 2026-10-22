@@ -228,7 +228,68 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
 .item .st .btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
 .item .age { font-size: .6875rem; color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 48px; text-align: right; }
 .item .age.tarde { color: var(--crit); font-weight: 600; }
-@media (max-width: 720px) { .item { grid-template-columns: 1fr; gap: 4px; } .item .st { justify-content: flex-start; } }
+
+/* A LINHA RESPONDE AO PAINEL QUE A CONTÉM, NÃO À JANELA.
+   Esta grade de três colunas foi desenhada para a largura inteira do conteúdo. Quando o mesmo
+   componente foi para a coluna lateral de 340 px, a janela continuava larga — a regra de 720 px
+   não disparava — e a coluna do meio espremia até quebrar uma palavra por linha, com as etiquetas
+   vazando para fora do painel. Largura de janela é a medida errada para um componente que aparece
+   em dois lugares de larguras diferentes: o que importa é o espaço que ELE recebeu.
+   `container-type: inline-size` no corpo do painel é o que permite perguntar isso. */
+.pb { container-type: inline-size; container-name: painel; }
+@container painel (max-width: 520px) {
+  .item { grid-template-columns: 1fr; gap: 5px; }
+  .item .st { justify-content: flex-start; }
+  .item .age { min-width: 0; text-align: left; }
+}
+/* Mesma regra pela janela, para o caso de o navegador não conhecer consultas de contêiner e para
+   a tela estreita de verdade, onde nenhum painel tem largura para três colunas. */
+@media (max-width: 720px) { .item { grid-template-columns: 1fr; gap: 4px; } .item .st { justify-content: flex-start; } .item .age { min-width: 0; text-align: left; } }
+
+/* ---------------------------------------------------------------- a linha que abre no lugar */
+/* A borda passa do .item para o invólucro: aberta, a linha e o seu detalhe são UM bloco, e um fio
+   entre os dois sugeriria que o detalhe pertence à linha seguinte. */
+.itemwrap { border-bottom: 1px solid var(--line); }
+.itemwrap:last-child { border-bottom: 0; }
+.itemwrap .item { border-bottom: 0; }
+.item.expansivel { cursor: pointer; margin: 0 -10px; padding-left: 10px; padding-right: 10px; border-radius: var(--r); transition: background .12s; }
+.item.expansivel:hover { background: var(--surface-2); }
+.itemwrap.aberto { background: var(--surface-2); margin: 0 -10px; padding: 0 10px; border-radius: var(--r-2); }
+.itemwrap.aberto .item.expansivel { margin: 0; padding-left: 0; padding-right: 0; background: none; }
+.chev { display: grid; place-items: center; width: 24px; height: 24px; flex: none; padding: 0; border: 0; border-radius: var(--r); background: none; color: var(--ink-3); cursor: pointer; }
+.chev:hover { background: var(--surface-3); color: var(--ink); }
+.chev .i { width: 15px; height: 15px; transition: transform .15s; }
+.chev[aria-expanded="true"] { color: var(--brand); }
+.chev[aria-expanded="true"] .i { transform: rotate(180deg); }
+.peek[hidden] { display: none; }
+.peek { display: grid; gap: 10px; padding: 2px 0 12px; border-top: 1px dashed var(--line-2); margin-top: 2px; }
+.peek .pks { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 18px; }
+.pk span { display: block; font-size: .625rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); }
+.pk > div { font-size: .8125rem; color: var(--ink); margin-top: 2px; }
+.peek .relato { font-size: .8125rem; color: var(--ink-2); white-space: pre-wrap; padding: 8px 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+.peek .acts { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.peek .acts .sep { flex: 1 1 auto; }
+
+/* ---------------------------------------------------------------- botão que está trabalhando */
+/* O rótulo some e um disco gira NO LUGAR DELE: a largura do botão não muda, então a fila não
+   dança embaixo do cursor no instante em que a pessoa acabou de mirar. */
+.btn[data-ocupado] { color: transparent; pointer-events: none; position: relative; }
+.btn[data-ocupado] .i { opacity: 0; }
+.btn[data-ocupado]::after {
+  content: ""; position: absolute; inset: 0; margin: auto; width: 13px; height: 13px;
+  border-radius: 50%; border: 2px solid var(--line-2); border-top-color: var(--ink-2);
+  animation: sp .7s linear infinite;
+}
+.btn.primary[data-ocupado]::after { border-color: var(--brand-3); border-top-color: var(--on-brand); }
+
+/* ---------------------------------------------------------------- filtro rápido da fila */
+.qfind { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.qfind input { height: 28px; font-size: .8125rem; max-width: 300px; }
+.qfind .kbd {
+  font-family: var(--font-mono); font-size: .625rem; color: var(--ink-3);
+  padding: 1px 5px; border: 1px solid var(--line-2); border-radius: var(--r); white-space: nowrap;
+}
+.qfind .cnt { font-size: .6875rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* ---------------------------------------------------------------- detalhe em duas colunas */
 .det { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; margin-top: 18px; }

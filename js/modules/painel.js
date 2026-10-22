@@ -13,10 +13,13 @@
 //    acesso e as últimas ações registradas. É o "acompanhar tudo" — e é por isso que ele não tem
 //    fila: quem cobra não disputa trabalho com quem é cobrado.
 import * as F from '../fluxo.js';
-import { listar, configAtual } from '../dados.js';
+import { listar, configAtual, pacientePor, nomeDe } from '../dados.js';
 import { situacao, atrasadas, explicar } from '../prazos.js';
 import { dadosDasFilas, filasDoPapel, repartir } from '../filas.js';
-import { start, h, run, pageHead, badge, stat, stats, rowbar, nota, icon, desde, corEtapa, horasNa } from '../ui.js';
+import {
+  start, h, run, pageHead, badge, stat, stats, rowbar, nota, icon, desde, corEtapa, horasNa,
+  linhaExpansivel, peekCampo, fmtDate,
+} from '../ui.js';
 import { PAPEIS, PAPEL_RESUMO } from '../permissoes.js';
 
 const ROOT = new URL('../../', import.meta.url).href;
@@ -27,21 +30,57 @@ const painel = (titulo, extra, ...corpo) => h('section', { class: 'panel' },
   h('div', { class: 'pb' }, corpo));
 const lista = (filtro) => ROOT + 'solicitacoes/' + (filtro ? '?' + filtro : '');
 
-/** Linha de caso, igual nas duas versões da tela: protocolo, próxima ação, etapa e tempo. */
-const itemCaso = (s, metas) => {
-  const sit = situacao(s, metas);
-  return h('div', { class: 'item' + (sit.estado === 'atrasada' ? ' late' : '') },
-    h('div', {},
-      h('a', { class: 'id', href: ROOT + `solicitacoes/detalhe.html?id=${s.id}` }, '#' + s.protocolo),
-      h('div', { class: 'sub' }, F.TIPO_CURTO[s.tipo])),
-    h('div', { class: 'o' }, F.proximaAcao(s).texto,
-      sit.estado !== 'sem_meta' ? h('div', { class: 'micro muted' }, explicar(s, metas)) : null),
-    h('div', { class: 'st' },
-      sit.rotulo ? badge(sit.rotulo, sit.estado === 'atrasada' ? 'crit' : 'warn') : null,
-      s.prioridade === 'alta' ? badge('Alta', 'crit') : null,
-      badge(F.ETAPAS[s.etapa], corEtapa(s.etapa)),
-      h('span', { class: 'age' + (sit.estado === 'atrasada' ? ' tarde' : '') }, desde(s.etapa_desde))));
-};
+/**
+ * Linha de caso, igual nas duas versões da tela, e que ABRE NO LUGAR: a lista responde "o que
+ * falta", e a abertura responde "de quem é e o que pediram" sem trocar de tela.
+ *
+ * `abertos` vem de fora porque esta tela se redesenha, e o que a pessoa acabou de abrir não pode
+ * fechar sozinho por causa de um clique em outro lugar.
+ */
+const itemCaso = (s, metas, ctx, abertos, pronts = []) => linhaExpansivel({
+  id: s.id,
+  abertos,
+  rotulo: `Ver o caso #${s.protocolo} sem sair desta tela`,
+  montarLinha: (gatilho) => {
+    const sit = situacao(s, metas);
+    return h('div', { class: 'item' + (sit.estado === 'atrasada' ? ' late' : '') },
+      h('div', {},
+        h('a', { class: 'id', href: ROOT + `solicitacoes/detalhe.html?id=${s.id}` }, '#' + s.protocolo),
+        h('div', { class: 'sub' }, F.TIPO_CURTO[s.tipo])),
+      h('div', { class: 'o' }, F.proximaAcao(s).texto,
+        sit.estado !== 'sem_meta' ? h('div', { class: 'micro muted' }, explicar(s, metas)) : null),
+      h('div', { class: 'st' },
+        sit.rotulo ? badge(sit.rotulo, sit.estado === 'atrasada' ? 'crit' : 'warn') : null,
+        s.prioridade === 'alta' ? badge('Alta', 'crit') : null,
+        badge(F.ETAPAS[s.etapa], corEtapa(s.etapa)),
+        h('span', { class: 'age' + (sit.estado === 'atrasada' ? ' tarde' : '') }, desde(s.etapa_desde)),
+        gatilho));
+  },
+  montarCorpo: () => {
+    const pac = pacientePor(s.paciente_id);
+    const pront = pronts.find((p) => p.id === s.prontuario_id);
+    const verPac = ctx.podeCompleto('paciente_identificacao') || ctx.pode('paciente_identificacao');
+    const prox = F.proximaAcao(s);
+    return h('div', {},
+      h('div', { class: 'pks' },
+        peekCampo('Paciente', verPac && pac
+          ? h('span', {}, pac.nome, h('div', { class: 'micro muted' }, `nasc. ${fmtDate(pac.nascimento)} · ${pac.telefone}`))
+          : h('span', { class: 'muted' }, 'reduzido para o seu papel')),
+        peekCampo('Prontuário', pront
+          ? h('span', { class: 'mono' }, pront.codigo, h('div', { class: 'micro muted' }, F.LOCAIS[pront.local]))
+          : null),
+        peekCampo('Próxima ação', h('span', {}, prox.texto,
+          h('div', { class: 'micro muted' }, prox.papel ? 'responsável: ' + prox.papel : 'caso encerrado'))),
+        peekCampo('Com quem está', s.assumido_por
+          ? h('span', {}, nomeDe(s.assumido_por), s.assumido_por === ctx.ator ? h('div', { class: 'micro', style: 'color:var(--ok)' }, 'é você') : null)
+          : h('span', { class: 'muted' }, 'ninguém ainda')),
+        s.medico_nome ? peekCampo('Médico', h('span', {}, s.medico_nome, h('div', { class: 'micro muted' }, 'fora do sistema'))) : null),
+      s.relato ? h('p', { class: 'relato' }, s.relato) : null,
+      h('div', { class: 'acts' },
+        h('a', { class: 'btn sm', href: ROOT + `solicitacoes/detalhe.html?id=${s.id}` }, icon('arrow'), 'Abrir o caso'),
+        F.aberta(s) ? h('a', { class: 'btn sm', href: ROOT + 'filas/' }, 'Ver na fila') : null));
+  },
+});
 
 /** "Onde o trabalho está parado" — uma série, o comprimento é a quantidade. Serve aos dois. */
 function ondeEstaParado(abertas) {
@@ -61,8 +100,10 @@ function ondeEstaParado(abertas) {
  * do número no menu —, então o que esta tela promete é exatamente o que a próxima entrega. Enquanto
  * cada tela contava do seu jeito, a inicial dizia um número e a fila mostrava outro.
  */
-async function telaDeEquipe(ctx, view, { abertas, metas }) {
+async function telaDeEquipe(ctx, view, { abertas, metas, pronts }) {
   const papel = ctx.papeis[0];
+  const abertos = new Set();
+  const linha = (s) => itemCaso(s, metas, ctx, abertos, pronts);
   const D = await dadosDasFilas();
   const partes = filasDoPapel(papel, D).map((f) => repartir(f, ctx.ator));
 
@@ -94,23 +135,29 @@ async function telaDeEquipe(ctx, view, { abertas, metas }) {
         ? `${minhas.length} ${minhas.length === 1 ? 'caso está' : 'casos estão'} na vez da sua equipe e todos dentro da meta.`
         : 'Nada esperando a sua equipe agora.'),
     (atrasos.length ? atrasos.map((x) => x.sol) : minhas)
-      .slice(0, 8).map((s) => itemCaso(s, metas)));
+      .slice(0, 8).map(linha));
 
   const minhaFila = painel('Os casos que você assumiu',
     h('a', { class: 'btn sm', href: ROOT + 'minhafila/' }, 'Minha fila'),
     meus.length
-      ? h('div', {}, meus.slice(0, 6).map((s) => itemCaso(s, metas)))
+      ? h('div', {}, meus.slice(0, 6).map(linha))
       : h('p', { class: 'small muted' }, livres
         ? `Você não assumiu nenhum caso. Há ${livres} esperando alguém pegar na Fila atual.`
         : 'Você não assumiu nenhum caso, e não há nada solto na fila da equipe.'));
 
+  // AS DUAS LISTAS DE CASO FICAM NA COLUNA LARGA, e o gráfico de barras na estreita.
+  // A linha de caso é uma grade de três colunas (quem, o que falta, estado): na lateral de 340 px
+  // ela espremia até quebrar uma palavra por linha e as etiquetas vazavam o painel. Barra com
+  // rótulo, ao contrário, lê bem em qualquer largura — então quem vai para a lateral é ela.
   view.append(
     pageHead(PAPEIS[papel], `Olá, ${ctx.nome.split(' ')[0]}`, PAPEL_RESUMO[papel]),
     indicadores.length ? stats(indicadores) : null,
     h('div', { class: 'det' },
-      h('div', { class: 'main' }, suaVez),
-      h('div', { class: 'aside' }, minhaFila, ondeEstaParado(abertas))),
-    h('p', { class: 'micro muted', style: 'margin-top:22px' }, icon('check'),
+      h('div', { class: 'main' }, suaVez, minhaFila),
+      h('div', { class: 'aside' }, ondeEstaParado(abertas))),
+    h('p', { class: 'micro muted', style: 'margin-top:22px' }, icon('olho'),
+      ' Clique numa linha para ver de quem é o caso e o que o paciente pediu, sem trocar de tela.'),
+    h('p', { class: 'micro muted', style: 'margin-top:8px' }, icon('check'),
       ' Os números acima são as suas filas, contadas pela mesma regra da tela "Fila atual" — o que'
       + ' aparece aqui é exatamente o que você encontra lá.'));
 }
@@ -118,6 +165,8 @@ async function telaDeEquipe(ctx, view, { abertas, metas }) {
 // ================================================================ quem administra
 async function telaDeAdmin(ctx, view, { sols, abertas, metas, tarefas, pronts, docs, entregas }) {
   const [usuarios, auditoria] = await Promise.all([run(listar('usuarios')), run(listar('auditoria'))]);
+  const abertos = new Set();
+  const linha = (s) => itemCaso(s, metas, ctx, abertos, pronts);
   const emEtapa = (...e) => abertas.filter((s) => e.includes(s.etapa));
   const prontPendentes = pronts.filter((p) => p.local !== 'arquivo');
   const receitasProntas = emEtapa('retorno_disponivel').filter((s) => docs.some((d) => d.solicitacao_id === s.id && d.estado === 'emitido'));
@@ -149,7 +198,7 @@ async function telaDeAdmin(ctx, view, { sols, abertas, metas, tarefas, pronts, d
         ? `Nada atrasado agora. ${semMeta} ${semMeta === 1 ? 'caso está' : 'casos estão'} em etapa sem meta definida — defina em Configurações para o alerta valer ali também.`
         : 'Nada atrasado agora: todas as etapas abertas estão dentro da meta definida pela clínica.'),
     naLista.length
-      ? h('div', { style: 'margin-top:10px' }, naLista.map((s) => itemCaso(s, metas)))
+      ? h('div', { style: 'margin-top:10px' }, naLista.map(linha))
       : h('p', { class: 'small muted', style: 'margin-top:10px' }, 'Nada em aberto.'));
 
   // ---------- pendências por equipe
@@ -211,7 +260,8 @@ async function telaDeAdmin(ctx, view, { sols, abertas, metas, tarefas, pronts, d
       h('div', { class: 'main' }, paradas, volume),
       h('div', { class: 'aside' }, ondeEstaParado(abertas), equipes, tempos, equipe, ultimas)),
     h('p', { class: 'micro muted', style: 'margin-top:22px' }, icon('clock'),
-      ' O critério de contagem de cada indicador está escrito embaixo do próprio número.'));
+      ' O critério de contagem de cada indicador está escrito embaixo do próprio número.'
+      + ' Clique numa linha da lista para ver o caso sem trocar de tela.'));
 }
 
 // ================================================================ despacho

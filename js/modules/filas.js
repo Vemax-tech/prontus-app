@@ -22,10 +22,13 @@
 // sistema evita. Esses itens ficam sempre na Fila atual, como trabalho da equipe.
 import * as F from '../fluxo.js';
 import { pacientePor, assumirSolicitacao, liberarSolicitacao, moverSolicitacao, nomeDe, configAtual } from '../dados.js';
-import { situacao, explicar, atrasadas } from '../prazos.js';
+import { situacao, explicar } from '../prazos.js';
 import { vigiarNovidades, faixaDeNovidades } from '../atualiza.js';
 import { dadosDasFilas, filasDoPapel, repartir } from '../filas.js';
-import { start, h, run, pageHead, empty, badge, icon, desde, corEtapa, horasNa, confirmDlg } from '../ui.js';
+import {
+  start, h, run, pageHead, empty, badge, icon, desde, corEtapa, confirmDlg,
+  botaoOcupado, linhaExpansivel, peekCampo, fmtDate,
+} from '../ui.js';
 import { PAPEIS } from '../permissoes.js';
 
 const ROOT = new URL('../../', import.meta.url).href;
@@ -55,6 +58,11 @@ export function telaDeFilas(modo) {
   window.addEventListener('pagehide', () => vigia.parar(), { once: true });
   const verPac = ctx.podeCompleto('paciente_identificacao') || ctx.pode('paciente_identificacao');
 
+  // O que está aberto e o que foi digitado no filtro vivem FORA do pintar(): toda ação redesenha
+  // a lista, e sem isso a linha que a pessoa acabou de abrir se fecharia no clique seguinte.
+  const abertos = new Set();
+  let busca = '';
+
   // Cada fila repartida conforme a tela: aqui mostramos o que é livre, lá o que é meu.
   const partes = filasDoPapel(papel, D).map((f) => repartir(f, ctx.ator));
   const filas = partes.map((f) => (meu
@@ -73,6 +81,18 @@ export function telaDeFilas(modo) {
     if (r) location.reload();        // a posse muda as duas filas: a volta ao servidor é honesta
     return r;
   }
+
+  /** O texto em que o filtro rápido procura: protocolo, tipo, etapa, paciente e próxima ação. */
+  const procuravel = (it) => {
+    if (!it.protocolo) {
+      const pac = pacientePor(it.paciente_id);
+      return [it.codigo, it.local_arquivo, F.LOCAIS[it.local], verPac && pac ? pac.nome : ''].join(' ').toLowerCase();
+    }
+    const pac = pacientePor(it.paciente_id);
+    return [it.protocolo, F.TIPO_CURTO[it.tipo], F.ETAPAS[it.etapa], F.proximaAcao(it).texto,
+      verPac && pac ? pac.nome : '', it.assumido_por ? nomeDe(it.assumido_por) : ''].join(' ').toLowerCase();
+  };
+  const passaNoFiltro = (it) => !busca || procuravel(it).includes(busca.toLowerCase());
 
   /**
    * O botão de PRÓXIMO PASSO, na própria linha da fila.
@@ -93,28 +113,90 @@ export function telaDeFilas(modo) {
     if (!F.aberta(it)) return null;
     // `principal` marca o caminho normal do processo em js/fluxo.js. A etapa "Aberta", por
     // exemplo, aceita classificar numa triagem OU pedir o prontuário — duas saídas legítimas,
-    // mas só uma é o que acontece sempre. As outras continuam no detalhe, onde há espaço para
-    // explicar o que cada uma faz.
+    // mas só uma é o que acontece sempre. As outras aparecem ao abrir a linha, onde há espaço
+    // para explicar o que cada uma faz.
     const t = F.transicoesDe(it, ctx.papeis).find((x) => x.principal);
-    if (!t) return null;
-    const direto = !t.exigeComunicacao && !t.exigeMotivo && !t.exigeConferencia
+    return t ? botaoDeTransicao(it, t) : null;
+  }
+
+  /**
+   * Um passo do fluxo como botão. Quando o passo precisa de informação, ele NÃO vira um botão que
+   * faz meio passo: vira um link que abre o caso já no formulário certo, por `#acao=`.
+   */
+  function botaoDeTransicao(it, t) {
+    const direto = !t.exigeComunicacao && !t.exigeMotivo && !t.exigeConferencia && !t.exigeMedico
       && !['T07', 'T08', 'T12', 'T14'].includes(t.id) && t.para !== 'concluida';
     if (direto) {
-      return h('button', {
-        class: 'btn sm', type: 'button',
-        onclick: () => agir(moverSolicitacao({ id: it.id, transicao: t.id, papeis: ctx.papeis, ator: ctx.ator }),
-          `#${it.protocolo}: ${t.rotulo.toLowerCase()}.`),
-      }, t.rotulo);
+      return botaoOcupado(t.rotulo, () => agir(
+        moverSolicitacao({ id: it.id, transicao: t.id, papeis: ctx.papeis, ator: ctx.ator }),
+        `#${it.protocolo}: ${t.rotulo.toLowerCase()}.`),
+      { class: 'btn sm' + (t.id === 'T15' ? ' danger' : '') });
     }
     return h('a', {
-      class: 'btn sm',
+      class: 'btn sm' + (t.id === 'T15' ? ' danger' : ''),
       href: ROOT + `solicitacoes/detalhe.html?id=${it.id}#acao=${t.id}`,
       title: 'Este passo pede informação: abre o caso já no formulário.',
     }, t.rotulo, '…');
   }
 
+  /**
+   * O detalhe que abre na própria linha: de quem é o caso, o que o paciente pediu, onde está a
+   * pasta, e TODAS as ações do papel — não só a principal. É o lugar que o comentário do
+   * "um botão, nunca dois" prometia: as outras saídas existem, mas longe do clique de volume.
+   */
+  function corpoDoCaso(it) {
+    const pac = pacientePor(it.paciente_id);
+    const pront = D.pronts.find((p) => p.id === it.prontuario_id);
+    const prox = F.proximaAcao(it);
+    const trans = F.transicoesDe(it, ctx.papeis);
+    const outras = trans.filter((t) => !t.principal);
+    return h('div', {},
+      h('div', { class: 'pks' },
+        peekCampo('Paciente', verPac && pac
+          ? h('span', {}, pac.nome, h('div', { class: 'micro muted' }, `nasc. ${fmtDate(pac.nascimento)} · ${pac.telefone}`))
+          : h('span', { class: 'muted' }, 'reduzido para o seu papel')),
+        peekCampo('Prontuário', pront
+          ? h('span', { class: 'mono' }, pront.codigo, h('div', { class: 'micro muted' }, `${F.LOCAIS[pront.local]} · estante ${pront.local_arquivo}`))
+          : null),
+        peekCampo('Próxima ação', h('span', {}, prox.texto,
+          h('div', { class: 'micro muted' }, prox.papel ? 'responsável: ' + prox.papel : 'caso encerrado'))),
+        peekCampo('Com quem está', it.assumido_por
+          ? h('span', {}, nomeDe(it.assumido_por), it.assumido_por === ctx.ator ? h('div', { class: 'micro', style: 'color:var(--ok)' }, 'é você') : null)
+          : h('span', { class: 'muted' }, 'ninguém ainda')),
+        it.medico_nome ? peekCampo('Médico', h('span', {}, it.medico_nome, h('div', { class: 'micro muted' }, 'fora do sistema'))) : null),
+      it.relato ? h('p', { class: 'relato' }, it.relato) : null,
+      h('div', { class: 'acts' },
+        h('a', { class: 'btn sm', href: ROOT + `solicitacoes/detalhe.html?id=${it.id}` }, icon('arrow'), 'Abrir o caso'),
+        outras.map((t) => botaoDeTransicao(it, t)),
+        !trans.length ? h('span', { class: 'small muted' }, 'Nenhuma ação sua nesta etapa.') : null));
+  }
+
+  /** O mesmo, para a pasta física: a trilha dela, que não tem protocolo nem dono. */
+  function corpoDoProntuario(it) {
+    const pac = pacientePor(it.paciente_id);
+    const movs = D.movimentos.filter((m) => m.prontuario_id === it.id).slice(-6).reverse();
+    return h('div', {},
+      h('div', { class: 'pks' },
+        peekCampo('Paciente', verPac && pac ? pac.nome : h('span', { class: 'muted' }, 'reduzido para o seu papel')),
+        peekCampo('Onde está', h('span', {}, F.LOCAIS[it.local], h('div', { class: 'micro muted' }, 'estante ' + it.local_arquivo))),
+        peekCampo('Com quem', nomeDe(it.custodia_usuario_id))),
+      movs.length
+        ? h('ul', { class: 'tl' }, movs.map((m) => h('li', {},
+          h('div', { class: 'row between' }, h('b', {}, F.MOVIMENTOS[m.tipo]), h('span', { class: 'when' }, desde(m.criado_em))),
+          h('p', { class: 'micro muted' }, nomeDe(m.ator_id), m.nota ? ' · ' + m.nota : ''))))
+        : h('p', { class: 'small muted' }, 'Nenhuma movimentação registrada.'));
+  }
+
   /** Um item de fila é uma solicitação OU um prontuário: a linha se adapta aos dois. */
-  const linha = (it) => {
+  const linha = (it) => linhaExpansivel({
+    id: it.id,
+    abertos,
+    montarLinha: (gatilho) => montarLinha(it, gatilho),
+    montarCorpo: () => (it.protocolo ? corpoDoCaso(it) : corpoDoProntuario(it)),
+    rotulo: it.protocolo ? `Ver o caso #${it.protocolo} sem sair da fila` : `Ver a trilha do prontuário ${it.codigo}`,
+  });
+
+  const montarLinha = (it, gatilho) => {
     if (it.protocolo) {
       const pac = pacientePor(it.paciente_id);
       // O alerta de pedido parado vem da meta da clínica (js/prazos.js), e é na fila que ele
@@ -134,22 +216,18 @@ export function telaDeFilas(modo) {
           badge(F.ETAPAS[it.etapa], corEtapa(it.etapa)),
           h('span', { class: 'age' + (sit.estado === 'atrasada' ? ' tarde' : '') }, desde(it.etapa_desde)),
           !dono
-            ? h('button', {
-              class: 'btn sm primary', type: 'button',
-              onclick: () => agir(assumirSolicitacao({ id: it.id, papeis: ctx.papeis, ator: ctx.ator }),
-                `Você assumiu o #${it.protocolo}. Está na sua fila.`),
-            }, 'Assumir')
+            ? botaoOcupado('Assumir', () => agir(
+              assumirSolicitacao({ id: it.id, papeis: ctx.papeis, ator: ctx.ator }),
+              `Você assumiu o #${it.protocolo}. Está na sua fila.`), { class: 'btn sm primary' })
             : dono === ctx.ator
-              ? h('button', {
-                class: 'btn sm', type: 'button',
-                onclick: async () => {
-                  if (!await confirmDlg(`Devolver o #${it.protocolo} à fila da equipe? Ele volta a aparecer para qualquer pessoa do seu papel.`)) return;
-                  return agir(liberarSolicitacao({ id: it.id, papeis: ctx.papeis, ator: ctx.ator }),
-                    `#${it.protocolo} devolvido à fila da equipe.`);
-                },
-              }, 'Liberar')
+              ? botaoOcupado('Liberar', async () => {
+                if (!await confirmDlg(`Devolver o #${it.protocolo} à fila da equipe? Ele volta a aparecer para qualquer pessoa do seu papel.`)) return;
+                return agir(liberarSolicitacao({ id: it.id, papeis: ctx.papeis, ator: ctx.ator }),
+                  `#${it.protocolo} devolvido à fila da equipe.`);
+              }, { class: 'btn sm' })
               : badge(nomeDe(dono), 'dim'),
-          proximoPasso(it)));
+          proximoPasso(it),
+          gatilho));
     }
     const pac = pacientePor(it.paciente_id);
     const sol = it.solicitacao_id ? sols.find((s) => s.id === it.solicitacao_id) : null;
@@ -160,19 +238,58 @@ export function telaDeFilas(modo) {
       h('div', { class: 'o' }, sol ? h('span', {}, 'Protocolo ', h('b', {}, '#' + sol.protocolo), ' · ', F.ETAPAS[sol.etapa]) : 'Sem solicitação associada'),
       h('div', { class: 'st' },
         badge(F.LOCAIS[it.local], it.local === 'arquivo' ? 'ok' : it.local === 'nao_localizado' ? 'crit' : 'warn'),
-        sol ? h('a', { class: 'btn sm', href: ROOT + `solicitacoes/detalhe.html?id=${sol.id}` }, 'Abrir') : null));
+        sol ? h('a', { class: 'btn sm', href: ROOT + `solicitacoes/detalhe.html?id=${sol.id}` }, 'Abrir') : null,
+        gatilho));
   };
 
   // A fila aberta por padrão é a primeira que tem trabalho: quem abre a tela já cai no que importa.
   const quanto = (f) => f.itens.length + f.custodia.length;
   let atual = Math.max(0, filas.findIndex(quanto));
   const corpo = h('section', { class: 'panel' });
-  const rail = h('div', { class: 'qrail', role: 'tablist', 'aria-label': 'Filas do seu papel' });
+  const rail = h('div', {
+    class: 'qrail', role: 'tablist', 'aria-label': 'Filas do seu papel',
+    // Um trilho de abas se percorre com as setas, não com dezesseis Tabs. Home e End vão às pontas.
+    onkeydown: (e) => {
+      const passo = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+      const destino = passo ? (atual + passo + filas.length) % filas.length
+        : e.key === 'Home' ? 0 : e.key === 'End' ? filas.length - 1 : null;
+      if (destino == null) return;
+      e.preventDefault();
+      atual = destino; pintar();
+      rail.children[atual]?.focus();
+    },
+  });
+
+  // O filtro rápido. Numa fila de dezesseis itens, achar "o caso da dona Terezinha" era rolar e
+  // ler; aqui são quatro letras. `/` é o atalho porque é onde a mão já está, e porque toda tela
+  // de lista que a equipe usa fora daqui (navegador, chat) usa o mesmo.
+  const campoBusca = h('input', {
+    type: 'search', placeholder: 'Filtrar nesta fila…', 'aria-label': 'Filtrar os itens desta fila',
+    value: busca,
+    // Só a LISTA é redesenhada a cada tecla, nunca o painel inteiro: trocar o campo de lugar no
+    // meio da digitação tira o foco dele e a pessoa perde a frase na segunda letra.
+    oninput: (e) => { busca = e.target.value.trim(); pintarLista(); },
+    onkeydown: (e) => { if (e.key === 'Escape') { busca = ''; e.target.value = ''; pintarLista(); e.target.blur(); } },
+  });
+  const contagemBusca = h('span', { class: 'cnt' });
+  const listaEl = h('div', { class: 'qlista' });
+
+  const atalhoBusca = (e) => {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+    // Nem dentro de um campo nem com uma janela modal aberta: ali a barra é uma barra.
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) return;
+    if (document.querySelector('.ov')) return;
+    e.preventDefault();
+    campoBusca.focus();
+    campoBusca.select();
+  };
+  document.addEventListener('keydown', atalhoBusca);
+  window.addEventListener('pagehide', () => document.removeEventListener('keydown', atalhoBusca), { once: true });
 
   function pintar() {
     rail.replaceChildren(filas.map((f, i) => h('button', {
       class: 'q' + (i === atual ? ' on' : '') + (quanto(f) ? '' : ' vazia'),
-      type: 'button', role: 'tab', 'aria-selected': String(i === atual),
+      type: 'button', role: 'tab', 'aria-selected': String(i === atual), tabindex: i === atual ? '0' : '-1',
       onclick: () => { atual = i; pintar(); },
     },
     h('span', {}, h('span', { class: 't' }, f.titulo), h('span', { class: 'd' }, f.dica)),
@@ -180,16 +297,15 @@ export function telaDeFilas(modo) {
 
     const f = filas[atual];
     const n = f ? quanto(f) : 0;
-    const mostrados = f ? [...f.itens, ...f.custodia, ...(verAssumidos ? f.assumidos : [])] : [];
     corpo.replaceChildren(
       h('div', { class: 'ph' },
         h('div', {}, h('h2', {}, f?.titulo || 'Fila'), h('p', { class: 'micro muted' }, f?.dica || '')),
         badge(`${n} ${n === 1 ? 'item' : 'itens'}`, n ? 'info' : 'dim')),
-      h('div', { class: 'pb' }, mostrados.length
-        ? mostrados.map(linha)
-        : h('p', { class: 'small muted' }, meu
-          ? 'Nada seu nesta fila. O que a equipe ainda não pegou está em "Fila atual".'
-          : 'Nada livre nesta fila agora. As outras filas do seu papel estão à esquerda.')),
+      h('div', { class: 'pb' },
+        itensDaVez().length
+          ? h('div', { class: 'qfind' }, campoBusca, h('span', { class: 'kbd' }, '/'), contagemBusca)
+          : null,
+        listaEl),
       // O que já tem dono não some: fica a um clique, para a coordenação ver o quadro inteiro
       // sem que o número da fila passe a contar trabalho que já é de alguém.
       !meu && f?.assumidos.length
@@ -201,6 +317,26 @@ export function telaDeFilas(modo) {
             ? 'Ocultar os que já têm dono'
             : `Mostrar os ${f.assumidos.length} que já têm dono`))
         : null);
+    pintarLista();
+  }
+
+  /** O que a fila escolhida mostra agora, antes do filtro. */
+  function itensDaVez() {
+    const f = filas[atual];
+    return f ? [...f.itens, ...f.custodia, ...(verAssumidos ? f.assumidos : [])] : [];
+  }
+
+  function pintarLista() {
+    const todos = itensDaVez();
+    const mostrados = todos.filter(passaNoFiltro);
+    contagemBusca.textContent = busca ? `${mostrados.length} de ${todos.length}` : '';
+    listaEl.replaceChildren(mostrados.length
+      ? mostrados.map(linha)
+      : h('p', { class: 'small muted' }, busca
+        ? `Nenhum item desta fila casa com "${busca}". Esc limpa o filtro.`
+        : meu
+          ? 'Nada seu nesta fila. O que a equipe ainda não pegou está em "Fila atual".'
+          : 'Nada livre nesta fila agora. As outras filas do seu papel estão à esquerda.'));
   }
 
   const sub = meu
@@ -222,7 +358,11 @@ export function telaDeFilas(modo) {
     // Por que o total acima pode ser menor que a soma dos números à esquerda: as filas são
     // leituras diferentes do mesmo trabalho e se cruzam de propósito. O total conta casos, não
     // aparições — sem isso, o mesmo atendimento seria cobrado duas vezes.
-    h('p', { class: 'micro muted', style: 'margin-top:20px' }, icon('check'),
+    h('p', { class: 'micro muted', style: 'margin-top:20px' }, icon('olho'),
+      ' Clique numa linha para ver o caso sem sair da fila: paciente, pedido, prontuário e as ações'
+      + ' que não cabem no botão principal. ', h('b', {}, '/'), ' foca o filtro, ', h('b', {}, 'Esc'),
+      ' limpa, e as setas percorrem as filas à esquerda.'),
+    h('p', { class: 'micro muted', style: 'margin-top:8px' }, icon('check'),
       ' Cada fila é um filtro sobre os mesmos registros, e um caso pode aparecer em mais de uma'
       + ' — por isso o total conta casos, não linhas.'
       + (meu ? ' Assumir não trava nada: ao liberar, o caso volta à fila da equipe com o registro de quem o teve.' : '')),
