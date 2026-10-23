@@ -425,6 +425,28 @@ clicar(chip);
 check(relato.value === chip.textContent, 'clicar na frase escreve o relato');
 doc.querySelector('.ov').remove();
 
+// --- cada papel vê só o que é do seu trabalho
+console.log('\n## Telas por papel: o que cada um vê');
+const cabecalhos = () => [...doc.querySelectorAll('th')].map((t) => t.textContent.trim());
+const painelPorTitulo = (t) => [...doc.querySelectorAll('.panel')].find((p) => p.querySelector('h2')?.textContent === t);
+
+trocarPapel('arquivo');
+await abrirTela('painel.js');
+check(Boolean(painelPorTitulo('Na vez da sua equipe')), 'o Arquivo vê só o que espera pela equipe dele na tela inicial');
+check(!painelPorTitulo('Onde o trabalho está parado'), 'e não o volume das outras equipes');
+check(!/Aguardando contato com o paciente/.test(painelPorTitulo('Na vez da sua equipe').textContent), 'sem etapa de outra equipe nesse painel');
+await abrirTela('solicitacoes.js');
+const colsArquivo = cabecalhos();
+check(['Comunicação', 'Entrega', 'Aberta em'].every((c) => !colsArquivo.includes(c)), 'a lista do Arquivo não traz contato, entrega nem quem abriu');
+check(colsArquivo.includes('Pendências') && colsArquivo.includes('Etapa atual'), 'mas mantém etapa e a pendência do prontuário');
+
+trocarPapel('callcenter');
+await abrirTela('solicitacoes.js');
+check(['Comunicação', 'Entrega', 'Aberta em'].every((c) => cabecalhos().includes(c)), 'o Call Center continua vendo a lista completa');
+trocarPapel('admin');
+await abrirTela('painel.js');
+check(Boolean(painelPorTitulo('Onde o trabalho está parado')), 'o Administrador continua vendo o painel inteiro');
+
 // ================================================================ resultado
 console.log('');
 if (erros.length) console.log(`console.error inesperado: ${erros.length}`);
