@@ -130,7 +130,8 @@ export function notificar({ titulo, corpo, url, tag = 'prontus' }) {
     const n = new Notification(titulo, { body: corpo, tag, renotify: false });
     n.onclick = () => {
       try { window.focus(); } catch { /* sem foco: o clique ainda navega */ }
-      if (url) location.assign(url);
+      // Só endereço do próprio site: a notificação é do sistema operacional e o `url` vem de quem a chamou.
+      try { if (url && new URL(url, location.href).origin === location.origin) location.assign(url); } catch { /* endereço inválido: só fecha */ }
       n.close();
     };
     return n;

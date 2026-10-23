@@ -5,7 +5,7 @@ services:
   db:
     image: postgres:16-alpine
     environment: { POSTGRES_PASSWORD: local-dev-postgres, POSTGRES_DB: prontus }
-    ports: ["54322:5432"]
+    ports: ["127.0.0.1:54322:5432"]   # só esta máquina: as senhas desta stack são públicas
     volumes:
       - ./00-papeis.sql:/docker-entrypoint-initdb.d/00-papeis.sql:ro
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d prontus"], interval: 2s, retries: 30 }
@@ -40,5 +40,5 @@ services:
   gateway:
     image: nginx:alpine
     depends_on: [auth, rest]
-    ports: ["54321:80"]
+    ports: ["127.0.0.1:54321:80"]
     volumes: ["./nginx.conf:/etc/nginx/conf.d/default.conf:ro"]
