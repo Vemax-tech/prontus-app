@@ -42,7 +42,7 @@ npm run test:auth    # login de ponta a ponta contra essa stack: senha, RLS, des
 
 Contas locais: `admin|callcenter|arquivo|recepcao@prontus.local`, senha `Prontus-Local-2026!` (só nesta stack). Em produção: preencha `js/config.js` (URL e chave **anon**, nunca a `service_role`), aplique a migration, crie o primeiro administrador e ajuste o `connect-src` em `_headers`.
 
-**Segurança do Auth hospedado.** `supabase/config.toml` guarda o que a documentação confirma (sem cadastro aberto, token de 15 min com rotação, limite de tentativas por IP). A política de senha (mínimo de 10 e as quatro classes de caractere) e a proteção contra senha vazada (plano Pro) ficam no painel. As migrations rodam em ordem (`0001` perfis, `0002` último administrador sem corrida).
+**Segurança do Auth hospedado.** `supabase/config.toml` guarda o que a documentação confirma (sem cadastro aberto, token de 15 min com rotação, limite de tentativas por IP). A política de senha (mínimo de 10 e as quatro classes de caractere) e a proteção contra senha vazada (plano Pro) ficam no painel. As migrations rodam em ordem (`0001` perfis, `0002` último administrador sem corrida, `0003` gestão de contas e auditoria de contas).
 
 ### Publicar
 
@@ -113,11 +113,14 @@ O que mudou no sistema:
 
 ### Usuários
 
-A tela **Usuários** é só do Administrador, e é a razão de o papel existir: dar e tirar acesso sem abrir chamado com o fornecedor. Três regras moldam a parte difícil:
+A tela **Usuários** é só do Administrador, e é a razão de o papel existir: dar e tirar acesso sem abrir chamado com o fornecedor. Ela trabalha com as **contas reais** do login (`js/contas.js`, migration `0003`): a lista, a liberação e a auditoria só respondem ao administrador, e quem recusa é o banco. Quatro regras moldam a parte difícil:
 
 1. **Um papel por pessoa** — é o papel que decide quais telas ela vê e qual fila é dela.
-2. **Quem já agiu é desativado, não apagado.** Apagar o id de quem assumiu um caso deixaria "—" no lugar da autoria, e a linha do tempo de um registro de saúde não pode perder isso. Só quem nunca agiu some de verdade — e a tela diz, depois do clique, qual dos dois aconteceu.
-3. **Ninguém fica sem administrador.** Rebaixar ou desativar o último admin trancaria a clínica para fora da própria administração: a camada de dados recusa.
+2. **Quem já agiu é desativado, não apagado.** Por isso não existe "Excluir": apagar a conta deixaria "—" no lugar da autoria, e a linha do tempo de um registro de saúde não pode perder isso. A conta desativada não entra, e a próxima página que a pessoa abrir já a expulsa.
+3. **Ninguém fica sem administrador.** Rebaixar ou desativar o último admin trancaria a clínica para fora da própria administração: o banco recusa.
+4. **Criar a conta é no painel do Supabase** (Authentication → Users), porque e-mail e senha exigem a chave de serviço, que não pode estar no navegador. A conta aparece na tela como "aguardando liberação" e o administrador decide nome, cargo e papel.
+
+Toda mudança de perfil (liberar, trocar papel, editar, desativar, reativar) grava uma linha em `auditoria_contas`, escrita só por gatilho: o autor vem do token, ninguém altera nem apaga a linha, nem o administrador.
 
 ---
 
