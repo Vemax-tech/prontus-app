@@ -25,7 +25,7 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
   const body = h('div');
 
   const nomePac = (s) => pacientePor(s.paciente_id)?.nome || '—';
-  const pacCell = (s) => (verPaciente ? nomePac(s) : h('span', { class: 'small muted' }, 'Paciente ' + (pacientePor(s.paciente_id)?.id || '').replace('pac-', '#')));
+  const pacCell = (s) => (verPaciente ? nomePac(s) : h('span', { class: 'small muted' }, 'reduzido'));
   const tarefasDe = (s) => tarefas.filter((t) => t.solicitacao_id === s.id && t.estado === 'pendente');
   const prontDe = (s) => prontuarioPor(s.prontuario_id);
   const ultimaCom = (s) => coms.filter((c) => c.solicitacao_id === s.id).sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em))[0];
@@ -139,7 +139,7 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
       && (!f.papel || F.proximaAcao(s).papel === f.papel)
       && (!f.dono || (f.dono === 'eu' ? s.assumido_por === ctx.ator : !s.assumido_por && F.aberta(s)))
       && (!f.prazo || situacao(s, metas).estado === f.prazo)
-      && contem([String(s.protocolo), s.relato, verPaciente ? nomePac(s) : '', F.TIPOS[s.tipo]], f.q));
+      && contem([String(s.protocolo), verPaciente ? nomePac(s) : '', F.TIPOS[s.tipo]], f.q));
     if (!shown.length) { body.replaceChildren(empty('Nenhuma solicitação com esses filtros.')); return; }
     body.replaceChildren(
       h('p', { class: 'small muted', style: 'margin-bottom:8px' }, `${shown.length} de ${lista.length} solicitações`),
@@ -154,7 +154,7 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
       canAbrir && h('button', { class: 'btn primary', onclick: () => nova('pedido_receita') }, icon('file'), 'Pedido de receita', h('span', { class: 'kbd' }, 'N'))),
     !verPaciente && h('p', { class: 'note', style: 'margin-bottom:14px' }, 'O seu papel vê o paciente de forma reduzida: o nome aparece só onde é necessário para a sua função.'),
     filtros([
-      { tipo: 'busca', chave: 'q', placeholder: 'Buscar por protocolo, paciente ou relato…' },
+      { tipo: 'busca', chave: 'q', placeholder: 'Buscar por protocolo ou paciente…' },
       { tipo: 'select', chave: 'tipo', rotulo: 'Todos os tipos', opcoes: Object.entries(F.TIPOS) },
       { tipo: 'select', chave: 'etapa', rotulo: 'Todas as etapas', opcoes: Object.entries(F.ETAPAS) },
       { tipo: 'select', chave: 'papel', rotulo: 'Próxima ação de qualquer um', opcoes: [['Call Center', 'Call Center'], ['Arquivo', 'Arquivo'], ['Recepção', 'Recepção']] },

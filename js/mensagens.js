@@ -15,11 +15,17 @@
 // EM PRODUÇÃO, quando entrar a API oficial do WhatsApp (fase B do plano), o modelo não muda — o
 // mesmo texto passa a sair por uma chamada em vez de por um clique.
 
-/** Modelos padrão, por tipo de comunicação (as chaves são as de F.COM_TIPOS). */
+/**
+ * Modelos padrão, por tipo de comunicação (as chaves são as de F.COM_TIPOS).
+ *
+ * Os recados para o GRUPO levam só o protocolo, nunca o nome do paciente: o texto fica gravado no
+ * histórico do caso e é lido por todos os papéis (inclusive os que não leem a identificação do
+ * paciente). Quem quiser o nome no grupo pode pôr `{paciente}` em Configurações; o padrão não põe.
+ */
 export const MODELOS_PADRAO = {
-  pedido_prontuario: 'Protocolo {protocolo} — localizar o prontuário {prontuario} ({paciente}), estante {estante}. {tipo}.',
-  aviso_retorno: 'Protocolo {protocolo} — {paciente}: o retorno de {medico} já está registrado no sistema. Pode ligar para o paciente.',
-  aviso_receita: 'Protocolo {protocolo} — {paciente}: receita pronta, emitida por {medico}.',
+  pedido_prontuario: 'Protocolo {protocolo} — localizar o prontuário {prontuario}, estante {estante}. {tipo}.',
+  aviso_retorno: 'Protocolo {protocolo} — o retorno de {medico} já está registrado no sistema. Pode ligar para o paciente.',
+  aviso_receita: 'Protocolo {protocolo} — receita pronta, emitida por {medico}.',
   contato_paciente: 'Olá, {primeiro_nome}. Aqui é da {clinica}, sobre o seu pedido (protocolo {protocolo}). {assunto}',
 };
 

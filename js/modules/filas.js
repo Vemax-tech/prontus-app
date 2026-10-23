@@ -323,7 +323,6 @@ export function telaDeFilas(modo) {
           ? h('span', {}, nomeDe(it.assumido_por), it.assumido_por === ctx.ator ? h('div', { class: 'micro', style: 'color:var(--ok)' }, 'é você') : null)
           : h('span', { class: 'muted' }, 'ninguém ainda')),
         it.medico_nome ? peekCampo('Médico', h('span', {}, it.medico_nome, h('div', { class: 'micro muted' }, 'fora do sistema'))) : null),
-      it.relato ? h('p', { class: 'relato' }, it.relato) : null,
       h('div', { class: 'acts' },
         h('a', { class: 'btn sm', href: ROOT + `solicitacoes/detalhe.html?id=${it.id}` }, icon('arrow'), 'Abrir o caso'),
         outras.map((t) => botaoDeTransicao(it, t)),

@@ -9,6 +9,7 @@
     "test": "node tests/telas.mjs",
     "test:auth": "node tests/auth.mjs",
     "test:banco": "node tests/banco.mjs",
+    "test:app": "node tests/app.mjs",
     "auth:local": "docker compose -f supabase/local/docker-compose.yml up -d && node supabase/local/preparar.mjs",
     "deploy": "npx --yes wrangler@latest deploy",
     "preview": "npx --yes wrangler@latest versions upload",

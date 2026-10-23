@@ -8,7 +8,7 @@ import { botaoOcupado, copyText, criarIcon, criarRun, empty as emptyBase, h, toa
 import { papelAtual, papeisAtuais, atorAtual, PAPEIS } from './papel.js';
 import { sair, perfilAtual } from './auth.js';
 import { pode, podeCompleto, PAPEL_RESUMO } from './permissoes.js';
-import { nomeDe, usuarioPor, registrarUsuarioDaSessao, reiniciar, avisosDoPapel, marcarAvisosLidos, escalonarAtrasos } from './dados.js';
+import { nomeDe, usuarioPor, registrarUsuarioDaSessao, reiniciar, avisosDoPapel, marcarAvisosLidos, escalonarAtrasos, prepararDados, atualizarAvisos, modo } from './dados.js';
 import * as Navegador from './avisos-navegador.js';
 import { dadosDasFilas, contarFilas } from './filas.js';
 import { temaAtual, alternarTema, TEMAS } from './tema.js';
@@ -197,14 +197,17 @@ const NAV = [
 const assinatura = () => h('a', { class: 'mark', href: ROOT, 'aria-label': `${MARCA.produto} — início` },
   icon('marca'), h('span', {}, MARCA.produto), h('em', {}, MARCA.descritor));
 
-/** Faixa de demonstração: uma linha, sempre visível, não fechável. */
-const faixaDemo = () => h('div', { class: 'demo', role: 'note' },
+/**
+ * Faixa de demonstração: uma linha, sempre visível, não fechável. Só existe na camada em memória
+ * (os testes de tela); com os dados no banco ela seria uma mentira, então não aparece.
+ */
+const faixaDemo = () => (modo() !== 'memoria' ? null : h('div', { class: 'demo', role: 'note' },
   icon('alert'),
   h('span', {}, h('b', {}, 'Demonstração'), ' — dados fictícios em memória. Nada é salvo e nenhum paciente real existe aqui.'),
   h('span', { class: 'sep', 'aria-hidden': 'true' }, '|'),
   // A segunda frase sai em tela estreita (app.css): a faixa precisa caber numa linha.
   h('span', { class: 'demo-2' }, 'Em produção as regras e as permissões vivem no banco, não no navegador.'),
-  h('button', { class: 'linkbtn', onclick: async () => { await reiniciar(); location.reload(); } }, 'Reiniciar dados'));
+  h('button', { class: 'linkbtn', onclick: async () => { await reiniciar(); location.reload(); } }, 'Reiniciar dados')));
 
 /**
  * Quem está usando o sistema. NA DEMONSTRAÇÃO é um seletor, para mostrar as visões sem login.
@@ -344,6 +347,8 @@ export async function start(key, title, render) {
   // Sem papel não há tela: a guarda de boot.js já manda para o login, isto cobre quem chegar aqui por outro caminho.
   if (!papeis.length) { await sair(); return; }
   registrarUsuarioDaSessao(perfilAtual());
+  // Pacientes, prontuários, equipe, configuração e avisos: o que as telas leem de forma síncrona.
+  await prepararDados();
   const ctx = {
     papeis, ator, nome: nomeDe(ator), usuario: usuarioPor(ator),
     pode: (recurso, acao = 'ver') => pode(papeis, recurso, acao),
@@ -356,7 +361,8 @@ export async function start(key, title, render) {
   const contagem = { 'filas/': 0, 'minhafila/': 0 };
   try {
     // Antes de contar, o prazo cobra: o que estourou a meta vira aviso de verdade (js/dados.js).
-    escalonarAtrasos();
+    await escalonarAtrasos();
+    await atualizarAvisos();
     const { atual, minha } = contarFilas(papeis[0], ator, await dadosDasFilas());
     contagem['filas/'] = atual; contagem['minhafila/'] = minha;
   } catch { /* fila sem número é melhor que tela sem casca */ }
@@ -463,7 +469,8 @@ async function vigiarTrabalho(ctx, { pilulas, sino }) {
   const papel = ctx.papeis[0];
 
   const ciclo = async () => {
-    escalonarAtrasos();
+    await escalonarAtrasos();
+    await atualizarAvisos();
     let n = { atual: 0, minha: 0 };
     try { n = contarFilas(papel, ctx.ator, await dadosDasFilas()); } catch { return; }
 
