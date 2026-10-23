@@ -198,7 +198,7 @@ Tudo vive em `css/tokens.css`, e a verificação recusa qualquer token usado num
 3. **A fila escolhe-se à esquerda e lê-se à direita.** O formato de uma caixa por fila cortava cada lista em "e mais 12…".
 4. **No detalhe, a próxima ação e os botões dela no mesmo bloco.** Ler o que falta e fazer o que falta no mesmo lugar.
 5. **Cor é sinal.** Fora das etiquetas de estado e da marca, é tinta sobre papel.
-6. **Fila atual e Minha fila são duas telas, não duas abas.** Pegar trabalho e tocar o que já é seu são dois momentos diferentes do dia; o número de cada uma fica no menu, e cada número conta exatamente o que a sua tela mostra.
+6. **Fila da equipe e Meus casos são duas telas, não duas abas.** Pegar trabalho e tocar o que já é seu são dois momentos diferentes do dia; o número de cada uma fica no menu, e cada número conta exatamente o que a sua tela mostra.
 7. **O celular é uma tela de verdade, não a de mesa espremida.** A faixa de demonstração cabe numa linha (antes ocupava quase metade da tela, fixa); as filas viram um trilho de chips; toda tabela vira uma lista de cartões "rótulo · valor", sem os campos vazios, com a ordenação numa fileira rolável; filtros recolhem atrás de um botão que conta os que estão em uso; tema e Configurações vão para a gaveta de navegação; e a janela modal sobe da borda de baixo, ao alcance do polegar.
 8. **Teclado e leitor de tela.** O primeiro Tab de toda página é "Pular para o conteúdo"; a janela modal prende o foco enquanto está aberta e o devolve a quem a abriu; campo recusado ganha `aria-invalid`; a tabela em cartões mantém os papéis ARIA de tabela, que a troca de `display` apagaria.
 
@@ -210,8 +210,8 @@ A etapa diz de qual **equipe** é a vez. Isso não bastava: "o Call Center tem 1
 
 Por isso a solicitação tem dono explícito:
 
-- **Fila atual** — o que é da vez da sua equipe e **ninguém assumiu**. É de onde se pega trabalho, com o botão **Assumir**.
-- **Minha fila** — o que **você** assumiu. É a sua lista de responsabilidade, e dela sai o número no menu.
+- **Fila da equipe** — o que é da vez da sua equipe e **ninguém assumiu**. É de onde se pega trabalho, com o botão **Assumir**.
+- **Meus casos** — o que **você** assumiu. É a sua lista de responsabilidade, e dela sai o número no menu.
 - **Liberar** devolve o caso à fila da equipe, e fica registrado que você o teve.
 
 A posse vale **por etapa**: quando o caso passa para outra equipe ela se desfaz sozinha, porque ninguém continua dono de um trecho que não é mais dele. Quem respondeu por cada trecho fica na linha do tempo — é esse o rastro do começo ao fim. Se a etapa seguinte ainda é da mesma equipe, o dono continua: não se pede para reassumir o que já se está fazendo.

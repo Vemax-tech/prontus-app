@@ -331,7 +331,7 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
               d.sol.assumido_por === ctx.ator ? h('span', { class: 'eu' }, ' — é você') : null)
             : meu ? h('span', { class: 'eu' }, ' — é você') : null),
         !fim && !d.sol.assumido_por && h('p', { class: 'small muted', style: 'margin-top:5px' },
-          'Ninguém assumiu este caso ainda: ele está na Fila atual da equipe.'),
+          'Ninguém assumiu este caso ainda: ele está na fila da equipe.'),
         d.sol.etapa === 'com_medico' && h('p', { class: 'small muted', style: 'margin-top:5px' },
           `O caso está fisicamente com ${d.sol.medico_nome || 'o médico'}, fora do sistema. Ele volta quando a Recepção registrar o retorno.`),
         fim && F.prontuarioPendente(d.prontuario) && h('p', { class: 'small', style: 'color:var(--warn);margin-top:5px' },

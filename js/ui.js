@@ -178,15 +178,23 @@ export const pageHead = (olho, titulo, sub, ...acoes) => h('div', { class: 'head
 // A BARRA É FILTRADA PELA MATRIZ DE PERMISSÕES, e é de propósito que ela fique curta: cada papel
 // vê só as telas do fluxo dele. O Arquivo não tem relatório nem administração; o Administrador não
 // tem fila, porque acompanha em vez de executar. Ninguém precisa aprender a ignorar menu.
+//
+// A BARRA TEM CINCO GRUPOS, separados por um fio, na ordem em que a pessoa os usa:
+//   começar (Visão geral) · trabalhar (as duas filas) · consultar (solicitações, prontuários,
+//   registros) · relatar · administrar. O fio é de quem VEM DEPOIS; como o grupo some quando o papel
+//   não o tem, o Administrador não vê um fio vazio no lugar da fila.
+//
+// Os nomes dizem o que a tela é, não a tela vizinha: "Fila da equipe" é o que ninguém assumiu,
+// "Meus casos" é o que você assumiu. "Registros" reúne documentos emitidos e comunicações.
 const NAV = [
   ['', 'Visão geral', 'home', 'dashboard', false],
-  ['filas/', 'Fila atual', 'inbox', 'tarefa_ver', false],
-  ['minhafila/', 'Minha fila', 'check', 'tarefa_ver', false],
-  ['solicitacoes/', 'Solicitações', 'list', 'solicitacao_ver', false],
+  ['filas/', 'Fila da equipe', 'inbox', 'tarefa_ver', true],
+  ['minhafila/', 'Meus casos', 'check', 'tarefa_ver', false],
+  ['solicitacoes/', 'Solicitações', 'list', 'solicitacao_ver', true],
   ['prontuarios/', 'Prontuários', 'archive', 'prontuario_ver', false],
-  ['registros/', 'Documentos', 'file', 'comunicacao_ver', false],
+  ['registros/', 'Registros', 'file', 'comunicacao_ver', false],
   ['relatorios/', 'Relatórios', 'chart', 'relatorios', true],
-  ['usuarios/', 'Usuários', 'users', 'usuarios', false],
+  ['usuarios/', 'Usuários', 'users', 'usuarios', true],
   ['permissoes/', 'Permissões', 'shield', 'auditoria', false],
   // Configurações NÃO entra aqui: é de administração, usada de vez em quando, e mais um item
   // não cabe na barra nem em 1680 px — espremeria a navegação que a equipe usa o dia inteiro

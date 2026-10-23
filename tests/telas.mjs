@@ -506,6 +506,21 @@ const maisColunas = [...doc.querySelectorAll('button')].find((b) => b.textConten
 check(Boolean(maisColunas), 'há o botão "Mais colunas"');
 clicar(maisColunas);
 check(['Comunicação', 'Entrega', 'Prioridade', 'Aberta por'].every((c) => heads().includes(c)), 'que traz de volta contato, entrega, prioridade e quem abriu');
+// --- a navegação: nomes claros e grupos separados
+console.log('\n## Navegação: o que cada papel vê, e em que grupos');
+const barraDeNavegacao = () => [...doc.querySelectorAll('#nav > .navi, #nav > .navsep')].map((n) => (n.classList.contains('navsep') ? '|' : n.firstChild && n.textContent.replace(/[0-9]+$/, '').trim()));
+const ESPERADA = {
+  callcenter: ['Visão geral', '|', 'Fila da equipe', 'Meus casos', '|', 'Solicitações', 'Prontuários', 'Registros', '|', 'Relatórios'],
+  recepcao: ['Visão geral', '|', 'Fila da equipe', 'Meus casos', '|', 'Solicitações', 'Prontuários', 'Registros', '|', 'Relatórios'],
+  arquivo: ['Visão geral', '|', 'Fila da equipe', 'Meus casos', '|', 'Solicitações', 'Prontuários', 'Registros'],
+  admin: ['Visão geral', '|', 'Solicitações', 'Prontuários', 'Registros', '|', 'Relatórios', '|', 'Usuários', 'Permissões'],
+};
+for (const [papel, esperada] of Object.entries(ESPERADA)) {
+  trocarPapel(papel);
+  await abrirTela('painel.js');
+  check(JSON.stringify(barraDeNavegacao()) === JSON.stringify(esperada), `${P.PAPEIS[papel]}: ${esperada.filter((x) => x !== '|').length} itens, em grupos separados por fio`);
+}
+check(!/Fila atual|Minha fila/.test(body()), 'os nomes antigos "Fila atual" e "Minha fila" não aparecem mais');
 
 // --- o Administrador gerencia as contas de verdade
 console.log('\n## Administrador: usuários reais');

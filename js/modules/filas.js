@@ -19,7 +19,7 @@
 //
 // A trilha do prontuário físico NÃO entra nessa divisão: a custódia é controlada pelos registros
 // de movimentação, não por posse de caso, e misturar os dois eixos é exatamente o que o resto do
-// sistema evita. Esses itens ficam sempre na Fila atual, como trabalho da equipe.
+// sistema evita. Esses itens ficam sempre na Fila da equipe, como trabalho da equipe.
 import * as F from '../fluxo.js';
 import {
   pacientePor, assumirSolicitacao, liberarSolicitacao, moverSolicitacao, moverProntuario,
@@ -43,7 +43,7 @@ const ROOT = new URL('../../', import.meta.url).href;
 export function telaDeFilas(modo) {
   const meu = modo === 'minha';
   const chave = meu ? 'minhafila/' : 'filas/';
-  const titulo = meu ? 'Minha fila' : 'Fila atual';
+  const titulo = meu ? 'Meus casos' : 'Fila da equipe';
 
   return start(chave, titulo, async (ctx, view) => {
   const D = await dadosDasFilas();
@@ -515,7 +515,7 @@ export function telaDeFilas(modo) {
       : h('p', { class: 'small muted' }, busca
         ? `Nenhum item desta fila casa com "${busca}". Esc limpa o filtro.`
         : meu
-          ? 'Nada seu nesta fila. O que a equipe ainda não pegou está em "Fila atual".'
+          ? 'Nada seu nesta fila. O que a equipe ainda não pegou está em "Fila da equipe".'
           : 'Nada livre nesta fila agora. As outras filas do seu papel estão à esquerda.'));
     pintarLote(mostrados);
   }
@@ -523,7 +523,7 @@ export function telaDeFilas(modo) {
   const sub = meu
     ? (total
       ? `${total} ${total === 1 ? 'caso é seu' : 'casos são seus'}. Você responde por eles até passarem para a próxima equipe.`
-      : 'Você não assumiu nenhum caso. Pegue trabalho em "Fila atual".')
+      : 'Você não assumiu nenhum caso. Pegue trabalho em "Fila da equipe".')
     : (total
       ? `${total} ${total === 1 ? 'item esperando' : 'itens esperando'} alguém assumir${assumidosNoTotal ? `, além de ${assumidosNoTotal} que já ${assumidosNoTotal === 1 ? 'tem dono' : 'têm dono'}` : ''}.`
       : assumidosNoTotal
