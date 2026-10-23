@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Prontus — sistema de solicitações clínicas: dúvida ou correção de receita, pedido de receita, custódia de prontuário físico e entrega. Sem build: o package.json existe só para os testes e a verificação.",
   "scripts": {
-    "dev": "npx --yes serve .",
+    "dev": "npx --yes serve@14.2.4 .",
     "check": "node scripts/verificar.mjs && node scripts/cores.mjs",
     "test": "node tests/telas.mjs",
     "test:auth": "node tests/auth.mjs",

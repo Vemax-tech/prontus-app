@@ -7,7 +7,7 @@
 --
 -- Criar a conta de outra pessoa exige a chave de serviço (convite pelo painel do Supabase ou por
 -- função de borda); por isso não há "cadastre-se" aberto: o primeiro administrador é criado com
--- supabase/local/semear.sql ou pelo painel, e os demais pelo administrador.
+-- supabase/producao/primeiro-admin.sql (ver LEIAME.md), e os demais pelo administrador.
 
 create table if not exists public.perfis (
   id        uuid primary key references auth.users (id) on delete cascade,

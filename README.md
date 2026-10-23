@@ -42,6 +42,8 @@ npm run test:auth    # login de ponta a ponta contra essa stack: senha, RLS, des
 
 Contas locais: `admin|callcenter|arquivo|recepcao@prontus.local`, senha `Prontus-Local-2026!` (só nesta stack). Em produção: preencha `js/config.js` (URL e chave **anon**, nunca a `service_role`), aplique a migration, crie o primeiro administrador e ajuste o `connect-src` em `_headers`.
 
+**Segurança do Auth hospedado.** `supabase/config.toml` guarda o que a documentação confirma (sem cadastro aberto, token de 15 min com rotação, limite de tentativas por IP). A política de senha (mínimo de 10 e as quatro classes de caractere) e a proteção contra senha vazada (plano Pro) ficam no painel. As migrations rodam em ordem (`0001` perfis, `0002` último administrador sem corrida).
+
 ### Publicar
 
 Projeto próprio no Cloudflare Workers (`prontus`), endereço próprio, cabeçalhos próprios:

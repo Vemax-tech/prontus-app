@@ -1,0 +1,22 @@
+# Publicar o login em produção
+
+Roteiro para ligar o login real (Supabase Auth + Postgres) no ambiente publicado. Nada aqui usa
+a chave `service_role`, e nenhuma senha passa por arquivo do repositório.
+
+1. **Projeto no Supabase.** Crie o projeto e anote a *Project URL* e a chave *anon* (Settings → API).
+2. **Migrations.** No SQL Editor, execute na ordem `supabase/migrations/0001_perfis.sql` e
+   `0002_ultimo_admin_concorrente.sql`. (Ou `supabase link` + `supabase db push`.)
+3. **Auth no painel** (Authentication):
+   - Sign In / Providers → desligue *Allow new users to sign up* (só a clínica cria contas).
+   - Policies/Password → mínimo de 12 caracteres e, se o plano permitir, *Prevent use of leaked passwords*.
+   - Confirme os limites e a rotação de token descritos em `supabase/config.toml`.
+4. **Primeiro administrador.** Authentication → Users → *Add user* (com *Auto Confirm User*), depois
+   execute `supabase/producao/primeiro-admin.sql` no SQL Editor, trocando e-mail e nome.
+5. **`js/config.js`.** Preencha `url` e `anonKey` com os valores do passo 1. Use só a chave **anon**;
+   a `service_role` nunca vai para o navegador nem para o repositório.
+6. **`_headers`.** Troque `https://*.supabase.co` em `connect-src` pelo endereço exato do projeto
+   (`https://SEU-PROJETO.supabase.co`).
+7. **Publicar** (`npm run deploy`, conforme o README) e testar: entrar, sair, abrir uma página sem
+   sessão (deve ir para o login) e entrar com uma conta de cada papel.
+
+Depois de entrar como administrador, crie as demais contas no painel e ajuste o perfil de cada uma.

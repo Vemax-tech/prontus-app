@@ -167,13 +167,22 @@ export async function sessao() {
 export async function tokenAtual() { return (await sessao())?.access_token || null; }
 
 // ---------------------------------------------------------------- navegação e guarda
-/** Só aceita caminho DENTRO deste app: `?next=` vindo da URL é entrada de atacante (open redirect). */
+/**
+ * Só aceita caminho DENTRO deste app: `?next=` vindo da URL é entrada de atacante (open redirect).
+ *
+ * Conferir a origem não basta. `/.//evil.example` tem a origem do site, mas o navegador remove o
+ * `/.` e o caminho vira `//evil.example` — e `location.replace('//evil.example')` é um endereço
+ * relativo ao protocolo, que sai do site. Por isso o resultado também tem de começar por UMA
+ * barra só, e sem barra invertida (que o navegador trata como barra).
+ */
 export function destinoSeguro(next) {
   try {
     const u = new URL(String(next || ''), location.origin);
     if (u.origin !== location.origin || !u.pathname.startsWith(ROOT.pathname)) return ROOT.pathname;
     if (u.pathname.startsWith(LOGIN.pathname)) return ROOT.pathname;
-    return u.pathname + u.search + u.hash;
+    const destino = u.pathname + u.search + u.hash;
+    if (!/^\/(?![/\\])/.test(destino)) return ROOT.pathname;
+    return destino;
   } catch { return ROOT.pathname; }
 }
 
