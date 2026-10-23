@@ -5,6 +5,12 @@
 > texto final precisam de validação do encarregado (DPO) e do jurídico da clínica. Os itens
 > marcados **[DECIDIR]** são decisões da clínica; este documento não as toma.
 
+> **Atualização.** Depois deste inventário ficou decidido **não guardar o texto clínico**: os itens 4 e 5 da
+> seção 2 deixaram de existir e a decisão do médico guarda só o desfecho e as assinaturas. Os prazos de
+> retenção e o atendimento ao titular estão detalhados em
+> [retencao-e-direitos-do-titular.md](retencao-e-direitos-do-titular.md), que prevalece sobre as seções 6 e 7
+> deste documento.
+
 ## 1. Papéis
 
 | Quem | Papel na LGPD |
