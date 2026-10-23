@@ -51,8 +51,9 @@ const M = {
   // quem decidiu (RN-11). Nenhum outro papel registra, e por isso nenhum outro pode inventar
   // uma decisão clínica.
   avaliacao_registrar: { recepcao: 'E' },
-  // Conteúdo clínico: só a Recepção lê. O Call Center e a administração NÃO leem (RN-18).
-  avaliacao_conteudo: { recepcao: 'V' },
+  // O sistema não guarda texto clínico. O que pode conter dado de saúde é o RELATO que o paciente
+  // faz ao Call Center: lê quem atende e quem leva o caso ao médico. Arquivo e administração não (RN-18).
+  relato_ler: { callcenter: 'V', recepcao: 'V' },
   // Que EXISTE um retorno, todos que precisam acompanhar podem ver.
   avaliacao_existencia: { callcenter: 'V', recepcao: 'V', admin: 'V' },
   documento_emitir: { recepcao: 'E' },
@@ -113,7 +114,7 @@ export const RECURSO_ROTULO = {
   prontuario_arquivar: 'Prontuário — receber devolução e arquivar',
   prontuario_ver: 'Prontuário — ver custódia e histórico',
   avaliacao_registrar: 'Retorno do médico — registrar',
-  avaliacao_conteudo: 'Retorno do médico — ler o conteúdo clínico',
+  relato_ler: 'Relato do paciente — ler',
   avaliacao_existencia: 'Retorno do médico — saber que já voltou',
   documento_emitir: 'Documento — registrar / versionar',
   documento_abrir: 'Documento — abrir o conteúdo',

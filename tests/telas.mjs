@@ -30,7 +30,10 @@ dom.window.URL.revokeObjectURL = () => {};
 const mod = (f) => import(pathToFileURL(path.join(REPO, 'js', f)).href);
 const F = await mod('fluxo.js');
 const P = await mod('permissoes.js');
-const D = await mod('dados.js');
+// Os testes de tela rodam sobre a camada em memória (sem rede, sem banco). As telas importam a
+// fachada js/dados.js; trocá-la para a memória aqui vale para todas, e D é a própria memória.
+await (await mod('dados.js')).usarMemoria();
+const D = await mod('dados-memoria.js');
 const Auth = await mod('auth.js');
 
 // A lista de contas vem do banco (js/contas.js). Aqui não há banco: um servidor falso responde só
@@ -141,11 +144,10 @@ check(r.error?.code === '42501', 'Administrador NÃO registra o retorno do médi
 r = await D.registrarAvaliacao({ solicitacao_id: alvo.id, desfecho: 'respondido', conteudo_clinico: 'x', papeis: ['recepcao'], ator: 'u-re1' });
 check(!r.error, 'Recepção registra o retorno, herdando o médico já gravado no caso');
 check(r.data.medico_nome === alvo.medico_nome && r.data.registrado_por === 'u-re1', 'o registro sai assinado: quem decidiu e quem transcreveu');
-check(!P.pode(['callcenter'], 'avaliacao_conteudo'), 'Call Center não lê conteúdo clínico (RN-18)');
-check(!P.pode(['admin'], 'avaliacao_conteudo'), 'Administrador não lê conteúdo clínico por administrar');
+check(!P.pode(['admin'], 'relato_ler') && !P.pode(['arquivo'], 'relato_ler'), 'Administrador e Arquivo não leem o relato do paciente (RN-18)');
 check(!P.pode(['admin'], 'tarefa_ver'), 'Administrador não tem fila: acompanha em vez de executar');
 check(P.pode(['admin'], 'usuarios', 'editar') && P.pode(['admin'], 'configuracoes', 'editar') && P.pode(['admin'], 'auditoria'), 'Administrador cria usuários, configura a clínica e vê a auditoria');
-check(P.pode(['recepcao'], 'avaliacao_conteudo'), 'Recepção lê o conteúdo clínico que ela mesma registra');
+check(P.pode(['recepcao'], 'relato_ler') && P.pode(['callcenter'], 'relato_ler'), 'Call Center e Recepção leem o relato');
 check(!P.pode(['arquivo'], 'documento_abrir'), 'arquivo não abre documento clínico');
 
 // ---------------------------------------------------------------- usuários (o super usuário)
@@ -308,6 +310,23 @@ check(painelAdmin.includes('Últimas ações registradas'), 'e as últimas açõ
 trocarPapel('callcenter');
 await abrirTela('solicitacao.js', 'initFicha', `solicitacoes/detalhe.html?id=${nova.id}`);
 check(body().includes('Próxima ação'), 'detalhe reabre e mostra a próxima ação');
+
+// --- o relato e o texto clínico (o que o banco também impõe)
+console.log('\n## Relato e texto clínico');
+check(/Pede|receita|medic/i.test(body()) && !body().includes('O seu papel não lê o relato'), 'o Call Center lê o relato no detalhe do caso');
+trocarPapel('arquivo');
+await abrirTela('solicitacao.js', 'initFicha', `solicitacoes/detalhe.html?id=${nova.id}`);
+check(body().includes('O seu papel não lê o relato do paciente'), 'o Arquivo vê o caso, mas não o relato');
+let rel = await D.lerRelato(nova.id, ['arquivo']);
+check(rel.error?.code === '42501', 'e a camada de dados recusa a leitura para o Arquivo');
+rel = await D.lerRelato(nova.id, ['admin']);
+check(rel.error?.code === '42501', 'e para o Administrador');
+rel = await D.lerRelato(nova.id, ['recepcao']);
+check(!rel.error && rel.data.length > 0, 'a Recepção lê');
+const { data: linhasSol } = await D.listar('solicitacoes');
+check(linhasSol.every((x) => !('relato' in x)), 'o relato não viaja nas linhas da solicitação');
+const { data: avas } = await D.listar('avaliacoes');
+check(avas.length > 0 && avas.every((x) => !Object.keys(x).some((k) => /clinic|resumo|conteudo|texto/i.test(k))), 'a avaliação do médico não guarda texto clínico nem resumo');
 
 // ================================================================ 9. automação
 //

@@ -9,7 +9,7 @@
 import * as F from '../fluxo.js';
 import {
   dossie, moverSolicitacao, moverProntuario, registrarComunicacao, registrarAvaliacao,
-  registrarEntrega, concluirTarefa, auditarLeitura, nomeDe, medicosDaClinica,
+  registrarEntrega, concluirTarefa, auditarLeitura, lerRelato, nomeDe, medicosDaClinica,
   assumirSolicitacao, liberarSolicitacao, configAtual, sugestoesDoPaciente, nomeDaClinica,
 } from '../dados.js';
 import {
@@ -56,6 +56,7 @@ const RECADOS = {
 export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ctx, view) => {
   const id = qs('id');
   let d = null;
+  let relato = null;
 
   async function recarregar() {
     d = await run(dossie(id));
@@ -63,6 +64,9 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
     return true;
   }
   if (!(await recarregar())) return;
+  // O relato não vem no dossiê: só quem a matriz autoriza o lê, uma vez por abertura da página,
+  // e o banco registra essa leitura na auditoria.
+  if (ctx.pode('relato_ler')) { const r = await lerRelato(id, ctx.papeis); relato = r.error ? '' : (r.data || ''); }
 
   const pintar = () => { view.replaceChildren(montar()); };
   const agir = async (p, msg) => { const r = await run(p, msg); if (r) { await recarregar(); pintar(); } return r; };
@@ -261,11 +265,9 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
       title: `Registrar o retorno${medico ? ' de ' + medico : ''}`,
       submitLabel: 'Registrar',
       fields: [
-        { name: 'medico_nome', label: 'Quem decidiu', required: true, maxlength: 80, value: medico, hint: 'A decisão é do médico. Este registro é a transcrição dela, e fica assinado com o nome dele e o seu.' },
+        { name: 'medico_nome', label: 'Quem decidiu', required: true, maxlength: 80, value: medico, hint: 'A decisão é do médico. Este registro é a transcrição dela, e fica assinado com o nome dele e o seu. O sistema guarda só o resultado, nunca o texto clínico.' },
         { name: 'medico_registro', label: 'Registro profissional (CRM)', required: true, maxlength: 40, value: d.sol.medico_registro || '' },
         { name: 'desfecho', label: 'O que ele decidiu', type: 'select', value: opcoes[0][0], options: opcoes },
-        { name: 'conteudo_clinico', label: 'Conteúdo clínico', type: 'textarea', required: true, maxlength: 4000, hint: 'Visível só para a Recepção. Não aparece para o Call Center nem para a administração.' },
-        { name: 'resumo_para_paciente', label: 'Resumo para repassar ao paciente', type: 'textarea', maxlength: 600, hint: 'Opcional, mas é o que permite ao Call Center avisar o paciente sem ler o conteúdo clínico.' },
       ],
       onSubmit: async (v) => {
         const a = await run(registrarAvaliacao({ solicitacao_id: id, ...v, papeis: ctx.papeis, ator: ctx.ator }));
@@ -361,7 +363,9 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
         d.sol.desfecho && [h('dt', {}, 'Desfecho'), h('dd', {}, F.DESFECHOS[d.sol.desfecho], d.sol.reaberturas ? h('div', { class: 'micro muted' }, `${d.sol.reaberturas} reabertura(s)`) : null)],
         d.sol.motivo && [h('dt', {}, 'Motivo'), h('dd', {}, d.sol.motivo)]),
       h('p', { class: 'eyebrow', style: 'margin-top:14px' }, 'Relato do paciente'),
-      h('p', { class: 'small', style: 'white-space:pre-wrap;margin-top:4px' }, d.sol.relato));
+      relato !== null
+        ? h('p', { class: 'small', style: 'white-space:pre-wrap;margin-top:4px' }, relato || '—')
+        : h('p', { class: 'small muted', style: 'margin-top:4px' }, 'O seu papel não lê o relato do paciente.'));
   }
 
   // ---------------------------------------------------------------- prontuário (eixo paralelo)
@@ -422,14 +426,18 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
             : 'Nada registrado ainda para este caso.'))
         : null;
     }
-    const completo = ctx.podeCompleto('avaliacao_conteudo');
-    const minimo = ctx.pode('avaliacao_conteudo');
-    if (completo || minimo) auditarLeitura(ctx.papeis, 'avaliacao_medica', id, ctx.ator);
     const rotulo = {
       respondido: 'Respondido', corrigido: 'Receita corrigida', receita_emitida: 'Receita emitida',
       nao_aprovado: 'Não aprovado', precisa_esclarecimento: 'Precisa de esclarecimento',
     };
-    return painel('Retorno do médico', completo ? badge('conteúdo clínico visível', 'info') : badge('conteúdo restrito', 'dim'),
+    // O que o Call Center pode dizer ao paciente sem ler nada clínico: o resultado, em frase pronta.
+    const RESPOSTA = {
+      receita_emitida: 'A receita está pronta.',
+      corrigido: 'A receita foi corrigida e há uma nova versão pronta.',
+      respondido: 'O médico respondeu à dúvida, sem alterar a receita.',
+      nao_aprovado: 'O médico não aprovou o pedido.',
+    };
+    return painel('Retorno do médico', badge('sem texto clínico guardado', 'dim'),
       d.avaliacoes.map((a, i) => h('div', { style: i ? 'margin-top:14px;padding-top:14px;border-top:1px solid var(--line)' : '' },
         h('div', { class: 'row between' },
           badge(rotulo[a.desfecho] || a.desfecho, a.desfecho === 'nao_aprovado' ? 'crit' : 'ok'),
@@ -437,13 +445,8 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
         h('p', { class: 'micro muted', style: 'margin:5px 0 8px' },
           'Decidido por ', h('b', {}, a.medico_nome || '—'), ' · ', a.registro_profissional,
           a.registrado_por ? h('span', {}, ' · transcrito por ', nomeDe(a.registrado_por)) : null),
-        completo
-          ? h('p', { style: 'white-space:pre-wrap' }, a.conteudo_clinico)
-          : minimo
-            ? h('div', {},
-              a.resumo_para_paciente ? h('p', { style: 'white-space:pre-wrap' }, a.resumo_para_paciente) : null,
-              nota('', 'O conteúdo clínico completo não é visível para o seu papel. Você vê o resumo autorizado.'))
-            : nota('', 'O conteúdo clínico não é visível para o Call Center. Para repassar a resposta por telefone, a saída é o "resumo para o paciente" que a Recepção escreve junto do registro, separado do conteúdo clínico.'))));
+        RESPOSTA[a.desfecho] ? h('p', {}, RESPOSTA[a.desfecho]) : null)),
+      nota('', 'O sistema registra só o resultado da decisão. O texto clínico fica no papel do consultório, não aqui.'));
   }
 
   function blocoDocumentos() {

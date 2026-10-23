@@ -25,10 +25,10 @@ export const init = () => start('permissoes/', 'Papéis e permissões', async (c
     })));
 
   const destaques = [
-    ['O Call Center registra e acompanha, mas não lê conteúdo clínico.', 'Ele vê que existe retorno e precisa comunicar; não vê o texto da avaliação nem abre a receita. Para avisar o paciente usa o "resumo para o paciente" que a Recepção escreve junto do registro — é o que permite fechar o atendimento sem acesso desnecessário a dado sensível.'],
-    ['O Arquivo tem acesso mínimo.', 'Para localizar um prontuário bastam nome, documento e o código. Nada de relato, retorno médico ou documento.'],
-    ['Só a Recepção lê o conteúdo clínico — e é ela quem o registra.', 'O médico não usa o sistema: o caso vai até ele em papel e a Recepção transcreve a resposta, assinando com o nome e o CRM de quem decidiu. Quem transcreve precisa ler; mais ninguém precisa.'],
-    ['O Administrador não ganha acesso clínico por administrar.', 'Ele cria e desativa pessoas, define as metas de prazo, tira relatórios e acompanha todos os casos — mas o texto da avaliação e o conteúdo da receita continuam fora do alcance dele. Coordenar não é motivo clínico.'],
+    ['O sistema não guarda texto clínico.', 'O médico decide em papel, e a Recepção registra só o resultado — receita emitida, corrigida, respondida ou não aprovada —, assinando com o nome e o CRM de quem decidiu. O Call Center repassa ao paciente uma frase pronta sobre esse resultado, sem ler nada clínico.'],
+    ['O relato do paciente é o dado sensível que sobra.', 'Só o Call Center, que o recebe, e a Recepção, que leva o caso ao médico, o leem — e cada leitura entra na auditoria. O Arquivo e o Administrador não leem.'],
+    ['O Arquivo tem acesso mínimo.', 'Para localizar um prontuário bastam o código e onde a pasta está. Ele não lê o nome do paciente, o relato, o retorno médico nem o documento.'],
+    ['O Administrador não ganha acesso por administrar.', 'Ele cria e desativa pessoas, define as metas de prazo, tira relatórios e acompanha todos os casos — mas não lê o relato nem a identificação do paciente. Coordenar não é motivo para ver dado de saúde.'],
   ];
 
   view.append(

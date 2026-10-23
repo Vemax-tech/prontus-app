@@ -5,7 +5,10 @@ a chave `service_role`, e nenhuma senha passa por arquivo do repositório.
 
 1. **Projeto no Supabase.** Crie o projeto e anote a *Project URL* e a chave *anon* (Settings → API).
 2. **Migrations.** No SQL Editor, execute na ordem `supabase/migrations/0001_perfis.sql`,
-   `0002_ultimo_admin_concorrente.sql` e `0003_admin_contas.sql`. (Ou `supabase link` + `supabase db push`.)
+   `0002_ultimo_admin_concorrente.sql`, `0003_admin_contas.sql`, `0004_dados_esquema.sql`,
+   `0005_dados_funcoes.sql` e `0006_equipe_e_atrasos.sql`. (Ou `supabase link` + `supabase db push`.)
+   Os pacientes e prontuários da clínica entram por importação própria: o sistema ainda não tem tela de
+   cadastro de paciente, e `supabase/local/pacientes-demo.sql` é só de exemplo, para a stack local.
 3. **Auth no painel** (Authentication):
    - Sign In / Providers → desligue *Allow new users to sign up* (só a clínica cria contas).
    - Policies/Password → mínimo de 12 caracteres e, se o plano permitir, *Prevent use of leaked passwords*.

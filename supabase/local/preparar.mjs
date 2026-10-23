@@ -24,6 +24,10 @@ for (const arq of readdirSync(path.join(AQUI, '../migrations')).filter((f) => f.
   if (mig.status !== 0) throw new Error(`migration ${arq} falhou: ${mig.stderr}`);
 }
 
+// Pacientes fictícios para a stack local (nenhum dado real). Idempotente.
+const demo = psql(null, readFileSync(path.join(AQUI, 'pacientes-demo.sql'), 'utf8'));
+if (demo.status !== 0) throw new Error(`pacientes de exemplo falharam: ${demo.stderr}`);
+
 for (const [email, nome, cargo, papel] of CONTAS) {
   const r = await fetch(`${URL_LOCAL}/auth/v1/admin/users`, {
     method: 'POST',

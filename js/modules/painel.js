@@ -76,7 +76,6 @@ const itemCaso = (s, metas, ctx, abertos, pronts = []) => linhaExpansivel({
           ? h('span', {}, nomeDe(s.assumido_por), s.assumido_por === ctx.ator ? h('div', { class: 'micro', style: 'color:var(--ok)' }, 'é você') : null)
           : h('span', { class: 'muted' }, 'ninguém ainda')),
         s.medico_nome ? peekCampo('Médico', h('span', {}, s.medico_nome, h('div', { class: 'micro muted' }, 'fora do sistema'))) : null),
-      s.relato ? h('p', { class: 'relato' }, s.relato) : null,
       h('div', { class: 'acts' },
         h('a', { class: 'btn sm', href: ROOT + `solicitacoes/detalhe.html?id=${s.id}` }, icon('arrow'), 'Abrir o caso'),
         F.aberta(s) ? h('a', { class: 'btn sm', href: ROOT + 'filas/' }, 'Ver na fila') : null));
