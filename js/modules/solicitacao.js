@@ -573,7 +573,7 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
         h('a', { class: 'btn sm', href: ROOT + 'solicitacoes/' }, 'Voltar à lista')),
       blocoTrilha(),
       blocoProxima(),
-      h('div', { class: 'det' },
+      h('div', { class: 'det caso' },
         h('div', { class: 'main' }, blocoClinico(), blocoDocumentos(), blocoEntrega(), blocoComunicacoes(), blocoHistorico()),
         h('div', { class: 'aside' }, blocoResumo(), blocoProntuario(), blocoTarefas())));
   }
