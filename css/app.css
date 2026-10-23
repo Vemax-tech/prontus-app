@@ -249,6 +249,13 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
 }
 
 /* ---------------------------------------------------------------- linha do tempo */
+/* "Sobre este painel": explicação recolhida, uma linha, no lugar da caixa que ocupava a altura de três. */
+.ajuda { margin: 0 0 10px; font-size: .75rem; color: var(--ink-3); }
+.ajuda summary { display: inline-block; cursor: pointer; list-style: none; text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }
+.ajuda summary::-webkit-details-marker { display: none; }
+.ajuda summary:hover { color: var(--ink-2); }
+.ajuda[open] summary { margin-bottom: 4px; }
+.ajuda p { max-width: 70ch; font-size: .8125rem; color: var(--ink-2); }
 .tl { position: relative; padding-left: 20px; }
 .tl::before { content: ""; position: absolute; left: 4px; top: 7px; bottom: 7px; width: 1px; background: var(--line-2); }
 .tl li { position: relative; padding: 0 0 15px; font-size: .8125rem; }
