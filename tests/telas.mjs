@@ -474,7 +474,8 @@ check(colsArquivo.includes('Pendências') && colsArquivo.includes('Etapa atual')
 
 trocarPapel('callcenter');
 await abrirTela('solicitacoes.js');
-check(['Comunicação', 'Entrega', 'Aberta em'].every((c) => cabecalhos().includes(c)), 'o Call Center continua vendo a lista completa');
+clicar([...doc.querySelectorAll('button')].find((b) => b.textContent === 'Mais colunas'));
+check(['Comunicação', 'Entrega', 'Aberta em'].every((c) => cabecalhos().includes(c)), 'o Call Center continua vendo a lista completa (em "Mais colunas")');
 trocarPapel('admin');
 await abrirTela('painel.js');
 check(Boolean(painelPorTitulo('Onde o trabalho está parado')), 'o Administrador continua vendo o painel inteiro');
@@ -489,6 +490,22 @@ trocarPapel('callcenter');
 await abrirTela('solicitacao.js', 'initFicha', `solicitacoes/detalhe.html?id=${comMedico.id}`);
 check(doc.querySelector('.det.caso > .main') && doc.querySelector('.det.caso > .aside'), 'o detalhe marca o seu layout (.det.caso) para o celular reordenar: ações antes, linha do tempo por último');
 check(/\.det\.caso\s*>\s*\.main\s*>\s*:last-child\s*\{\s*order:\s*1/.test(cssApp), 'e a linha do tempo, último painel, vai para o fim');
+// --- a lista de solicitações enxuta
+console.log('\n## Solicitações: uma linha por caso, o resto sob demanda');
+trocarPapel('callcenter');
+await abrirTela('solicitacoes.js');
+const heads = () => [...doc.querySelectorAll('th')].map((t) => t.textContent.replace(/[▲▼]/g, '').trim());
+check(!['Comunicação', 'Entrega', 'Prioridade', 'Aberta por'].some((c) => heads().includes(c)), 'por padrão a lista não traz contato, entrega, prioridade nem quem abriu');
+check(['Caso', 'Paciente', 'Etapa atual', 'Na etapa há', 'Vez de', 'Com quem está', 'Pendências', 'Aberta em'].every((c) => heads().includes(c)), 'e traz o que se consulta todo dia');
+check(doc.querySelector('td .tag.crit')?.textContent === 'Alta', 'a prioridade alta aparece ao lado do protocolo');
+check(!/meta de [0-9]+ h para/.test(body()), 'o tempo na etapa é curto ("meta 2 h"), sem a frase longa que quebrava em cinco linhas');
+const barra = doc.querySelector('.toolbar');
+check(barra.classList.contains('tem-extra') && barra.querySelectorAll('select.extra').length === 3, 'tipo, vez de e prioridade ficam atrás de "Mais filtros"');
+check(!barra.querySelector('select[aria-label="Qualquer prazo"]').classList.contains('extra') && !barra.querySelector('select[aria-label="Abertas e encerradas"]').classList.contains('extra'), 'prazo e "só em aberto" continuam à vista');
+const maisColunas = [...doc.querySelectorAll('button')].find((b) => b.textContent === 'Mais colunas');
+check(Boolean(maisColunas), 'há o botão "Mais colunas"');
+clicar(maisColunas);
+check(['Comunicação', 'Entrega', 'Prioridade', 'Aberta por'].every((c) => heads().includes(c)), 'que traz de volta contato, entrega, prioridade e quem abriu');
 
 // --- o Administrador gerencia as contas de verdade
 console.log('\n## Administrador: usuários reais');

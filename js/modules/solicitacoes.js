@@ -2,11 +2,12 @@
 // É a tela onde a operação enxerga tudo de uma vez, e os dois fluxos convivem sem se misturar.
 import * as F from '../fluxo.js';
 import { listar, abrirSolicitacao, possivelDuplicidade, nomeDe, pacientePor, prontuarioPor, configAtual } from '../dados.js';
-import { situacao, explicar } from '../prazos.js';
+import { situacao } from '../prazos.js';
 import { start, h, run, pageHead, empty, badge, dataTable, filtros, contem, formModal, modal, fmtDate, qs, icon, desde, corEtapa, horasNa } from '../ui.js';
 
 const ROOT = new URL('../../', import.meta.url).href;
 const PRIO = { alta: 'Alta', normal: 'Normal', baixa: 'Baixa' };
+const horas = (n) => (n < 1 ? `${Math.round(n * 60)} min` : n < 48 ? `${Math.round(n)} h` : `${Math.round(n / 24)} d`);
 
 export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, view) => {
   const canAbrir = ctx.pode('solicitacao_abrir', 'editar');
@@ -72,26 +73,31 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
 
   // ---------------------------------------------------------------- colunas
   const todas = [
-    { key: 'protocolo', label: 'Protocolo', sort: (s) => s.protocolo, render: (s) => h('span', {},
+    // A prioridade alta mora ao lado do protocolo: coluna só para dizer "Alta" em uma linha de dez
+    // gastava a largura de um campo inteiro. Normal e baixa não aparecem (só o desvio merece sinal).
+    { key: 'protocolo', label: 'Caso', sort: (s) => s.protocolo, render: (s) => h('span', {},
       h('a', { class: 't mono', href: ROOT + `solicitacoes/detalhe.html?id=${s.id}` }, '#' + s.protocolo),
+      s.prioridade === 'alta' ? badge('Alta', 'crit') : null,
       h('div', { class: 'small muted' }, F.TIPO_CURTO[s.tipo])) },
     { key: 'paciente', label: 'Paciente', sort: (s) => nomePac(s).toLowerCase(), render: pacCell },
     { key: 'etapa', label: 'Etapa atual', sort: (s) => Object.keys(F.ETAPAS).indexOf(s.etapa), render: (s) => badge(F.ETAPAS[s.etapa], corEtapa(s.etapa)) },
     // Ordena pelo EXCEDENTE sobre a meta, não pelo tempo bruto: o que passou mais do próprio
     // prazo vem primeiro. Sem meta, cai para o tempo parado, que é o que se sabe.
     { key: 'etapa_desde',
-      label: 'Tempo na etapa',
+      label: 'Na etapa há',
       sort: (s) => { const x = situacao(s, metas); return x.meta === null ? -horasNa(s.etapa_desde) / 1e3 : -(x.horas - x.meta); },
       render: (s) => {
         if (!F.aberta(s)) return h('span', { class: 'small muted' }, '—');
         const sit = situacao(s, metas);
         const cor = sit.estado === 'atrasada' ? 'color:var(--crit);font-weight:600'
           : sit.estado === 'atencao' ? 'color:var(--warn);font-weight:600' : null;
+        // Só o tempo e a meta, em duas linhas curtas. A frase inteira ("meta de 2 h para 'Com o médico',
+        // parada há 3 d") quebrava em cinco linhas e fazia cada caso ocupar a altura de quatro.
         return h('span', {},
           h('span', { style: cor }, desde(s.etapa_desde)),
-          sit.rotulo ? h('div', { class: 'micro', style: 'color:var(--ink-3)' }, explicar(s, metas)) : null);
+          sit.meta !== null ? h('div', { class: 'micro muted' }, `meta ${horas(sit.meta)}`) : null);
       } },
-    { key: 'prox', label: 'Próxima ação de', sort: (s) => F.proximaAcao(s).papel || 'zz', render: (s) => {
+    { key: 'prox', label: 'Vez de', sort: (s) => F.proximaAcao(s).papel || 'zz', render: (s) => {
       const p = F.proximaAcao(s);
       return p.papel ? badge(p.papel, 'dim') : h('span', { class: 'small muted' }, '—');
     } },
@@ -123,13 +129,18 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
       return h('span', { class: 'small', style: falta ? 'color:var(--crit)' : null }, F.ENTREGA_ESTADOS[e.estado], h('div', { class: 'small muted' }, F.ENTREGA_MODOS[e.modo]));
     } },
     { key: 'prio', label: 'Prioridade', sort: (s) => ['alta', 'normal', 'baixa'].indexOf(s.prioridade), render: (s) => (s.prioridade === 'normal' ? h('span', { class: 'small muted' }, '—') : badge(PRIO[s.prioridade], s.prioridade === 'alta' ? 'crit' : 'dim')) },
-    { key: 'criado', label: 'Aberta em', sort: (s) => s.criado_em, render: (s) => h('span', { class: 'small' }, fmtDate(s.criado_em), h('div', { class: 'small muted' }, nomeDe(s.aberta_por))) },
+    { key: 'criado', label: 'Aberta em', sort: (s) => s.criado_em, render: (s) => h('span', { class: 'small' }, fmtDate(s.criado_em)) },
+    { key: 'por', label: 'Aberta por', sort: (s) => nomeDe(s.aberta_por).toLowerCase(), render: (s) => h('span', { class: 'small' }, nomeDe(s.aberta_por)) },
   ];
-
+  // O que a lista mostra todo dia cabe em uma linha por caso. Contato, entrega, prioridade e quem
+  // abriu são consulta de vez em quando: ficam atrás de "Mais colunas" (e o detalhe do caso tem tudo).
+  const EXTRAS = ['com', 'entrega', 'prio', 'por'];
   // Quem não acompanha o retorno clínico (o Arquivo) só lida com a pasta física: contato com o
-  // paciente, entrega do documento e quem abriu o pedido são de outras equipes e só atrapalham a lista.
+  // paciente, entrega do documento e quem abriu o pedido são de outras equipes e só atrapalham a lista,
+  // nem sob demanda.
   const soPasta = !ctx.pode('avaliacao_existencia');
-  const cols = soPasta ? todas.filter((c) => !['com', 'entrega', 'criado'].includes(c.key)) : todas;
+  const DE_OUTRAS_EQUIPES = ['com', 'entrega', 'criado', 'por'];
+  const colunas = () => todas.filter((c) => !(soPasta && DE_OUTRAS_EQUIPES.includes(c.key)) && (f.extras || !EXTRAS.includes(c.key)));
 
   function draw() {
     const shown = lista.filter((s) => (!f.abertas || F.aberta(s))
@@ -142,8 +153,10 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
       && contem([String(s.protocolo), verPaciente ? nomePac(s) : '', F.TIPOS[s.tipo]], f.q));
     if (!shown.length) { body.replaceChildren(empty('Nenhuma solicitação com esses filtros.')); return; }
     body.replaceChildren(
-      h('p', { class: 'small muted', style: 'margin-bottom:8px' }, `${shown.length} de ${lista.length} solicitações`),
-      dataTable({ cols, rows: shown, state: st, size: 12, onState: draw, vazio: empty('Nada aqui'), // "A linha fica vermelha na fila" (plano, seção 6) — agora pela meta da clínica, não por um
+      h('div', { class: 'row between', style: 'margin-bottom:8px' },
+        h('p', { class: 'small muted' }, `${shown.length} de ${lista.length} solicitações`),
+        h('button', { class: 'btn sm', type: 'button', 'aria-pressed': String(Boolean(f.extras)), onclick: () => { f.extras = !f.extras; draw(); } }, f.extras ? 'Menos colunas' : 'Mais colunas')),
+      dataTable({ cols: colunas(), rows: shown, state: st, size: 12, onState: draw, vazio: empty('Nada aqui'), // "A linha fica vermelha na fila" (plano, seção 6) — agora pela meta da clínica, não por um
       // limite fixo de 48 h que o código tinha escolhido sozinho.
       rowClass: (s) => (situacao(s, metas).estado === 'atrasada' ? 'late' : null) }));
   }
@@ -155,12 +168,12 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
     !verPaciente && h('p', { class: 'note', style: 'margin-bottom:14px' }, 'O seu papel vê o paciente de forma reduzida: o nome aparece só onde é necessário para a sua função.'),
     filtros([
       { tipo: 'busca', chave: 'q', placeholder: 'Buscar por protocolo ou paciente…' },
-      { tipo: 'select', chave: 'tipo', rotulo: 'Todos os tipos', opcoes: Object.entries(F.TIPOS) },
+      { tipo: 'select', chave: 'tipo', rotulo: 'Todos os tipos', opcoes: Object.entries(F.TIPOS), extra: true },
       { tipo: 'select', chave: 'etapa', rotulo: 'Todas as etapas', opcoes: Object.entries(F.ETAPAS) },
-      { tipo: 'select', chave: 'papel', rotulo: 'Próxima ação de qualquer um', opcoes: [['Call Center', 'Call Center'], ['Arquivo', 'Arquivo'], ['Recepção', 'Recepção']] },
+      { tipo: 'select', chave: 'papel', rotulo: 'Vez de qualquer equipe', opcoes: [['Call Center', 'Call Center'], ['Arquivo', 'Arquivo'], ['Recepção', 'Recepção']], extra: true },
       { tipo: 'select', chave: 'dono', rotulo: 'Qualquer responsável', opcoes: [['eu', 'Os que eu assumi'], ['livre', 'Sem dono']] },
       { tipo: 'select', chave: 'prazo', rotulo: 'Qualquer prazo', opcoes: [['atrasada', 'Paradas além da meta'], ['atencao', 'Perto do prazo'], ['sem_meta', 'Etapa sem meta']] },
-      { tipo: 'select', chave: 'prio', rotulo: 'Todas as prioridades', opcoes: Object.entries(PRIO) },
+      { tipo: 'select', chave: 'prio', rotulo: 'Todas as prioridades', opcoes: Object.entries(PRIO), extra: true },
       { tipo: 'select', chave: 'abertas', rotulo: 'Abertas e encerradas', opcoes: [['1', 'Só em aberto']] },
     ], f, draw),
     body,

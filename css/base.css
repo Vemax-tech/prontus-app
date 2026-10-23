@@ -131,6 +131,10 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
   font-size: .6875rem; font-weight: 700; line-height: 18px; text-align: center;
 }
 .toolbar .tgl .pill[hidden] { display: none; }
+/* "Mais filtros" na tela larga: os seletores de uso raro ficam atrás do botão, e o botão conta só eles. */
+.toolbar.tem-extra .tgl { display: inline-flex; flex: none; }
+.toolbar.tem-extra:not(.aberta) select.extra { display: none; }
+.toolbar .tgl .pill.pt { display: none; }
 
 /* ---------------------------------------------------------------- etiquetas de estado */
 /* Retângulo discreto com um ponto da cor do estado. O rótulo sempre acompanha: a cor
@@ -168,6 +172,7 @@ tbody tr { transition: background .1s; }
 tbody tr:hover { background: var(--surface-2); }
 td a.t { color: var(--ink); font-weight: 600; }
 td a.t:hover { color: var(--brand-2); text-decoration: underline; text-underline-offset: 2px; }
+td a.t + .tag { margin-left: 6px; vertical-align: 1px; }
 tr.late td:first-child { box-shadow: inset 3px 0 0 var(--crit); }
 .thbtn { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
 .thbtn:hover { color: var(--ink); }
@@ -287,6 +292,9 @@ th[aria-sort] .thbtn { color: var(--ink); }
 @media screen and (max-width: 720px) {
   .toolbar input, .toolbar select, .toolbar input[type="search"] { max-width: none; }
   .toolbar.recolhe .tgl { display: inline-flex; flex: none; }
+  /* No celular o botão esconde todos os seletores, então conta todos. */
+  .toolbar.tem-extra .tgl .pill.pe { display: none; }
+  .toolbar.tem-extra .tgl .pill.pt:not([hidden]) { display: inline-block; }
   /* A busca e o botão dividem a primeira linha; os seletores, quando abertos, descem para as seguintes. */
   .toolbar.recolhe input[type="search"] { flex: 1 1 calc(100% - 128px); min-width: 0; }
   .toolbar.recolhe select { display: none; flex: 1 1 calc(50% - 4px); min-width: 0; }

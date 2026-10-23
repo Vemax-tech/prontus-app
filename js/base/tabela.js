@@ -51,7 +51,13 @@ export function baixarCsv(nome, colunas, linhas) {
 }
 
 // ---------------------------------------------------------------- filtros
-/** Barra de filtros simples: defs = [{tipo:'busca'|'select', chave, placeholder?, rotulo?, opcoes?}]; f é mutado e onChange() redesenha. */
+/**
+ * Barra de filtros simples: defs = [{tipo:'busca'|'select', chave, placeholder?, rotulo?, opcoes?, extra?}];
+ * f é mutado e onChange() redesenha.
+ *
+ * `extra: true` marca o filtro de uso raro: ele fica atrás de "Mais filtros" também na tela larga,
+ * para a barra mostrar só o que se usa todo dia. Quem tem filtro extra EM USO vê o número no botão.
+ */
 //
 // Com três ou mais seletores a barra RECOLHE em tela estreita: fica a busca e um botão "Filtros"
 // com o número de filtros em uso. Sete seletores empilhados empurravam a lista para baixo da dobra
@@ -59,21 +65,29 @@ export function baixarCsv(nome, colunas, linhas) {
 export function filtros(defs, f, onChange) {
   const selects = defs.filter((d) => d.tipo !== 'busca');
   const recolhe = selects.length >= 3;
-  const pino = h('span', { class: 'pill' });
+  const comBotao = recolhe || selects.some((d) => d.extra);
+  const temExtra = selects.some((d) => d.extra);
+  // Dois números, um por situação: na tela larga o botão só esconde os extras e conta os extras em
+  // uso; no celular ele esconde TODOS os seletores e conta todos (css/base.css escolhe qual aparece).
+  const pinoExtra = h('span', { class: 'pill pe' });
+  const pinoTodos = h('span', { class: 'pill pt' });
+  const emUso = (d) => String(f[d.chave] ?? '') !== '';
   const contar = () => {
-    const n = selects.filter((d) => String(f[d.chave] ?? '') !== '').length;
-    pino.textContent = String(n); pino.hidden = !n;
-    if (tgl) tgl.setAttribute('aria-label', n ? `Filtros, ${n} em uso` : 'Filtros');
+    const todos = selects.filter(emUso).length, extras = selects.filter((d) => d.extra && emUso(d)).length;
+    pinoTodos.textContent = String(todos); pinoTodos.hidden = !todos;
+    pinoExtra.textContent = String(extras); pinoExtra.hidden = !extras;
+    const n = temExtra ? extras : todos;
+    if (tgl) tgl.setAttribute('aria-label', n ? `Mais filtros, ${n} em uso` : 'Mais filtros');
   };
   const mudou = () => { contar(); onChange(); };
-  const bar = h('div', { class: 'toolbar' + (recolhe ? ' recolhe' : '') });
-  const tgl = recolhe && h('button', {
+  const bar = h('div', { class: 'toolbar' + (recolhe ? ' recolhe' : '') + (temExtra ? ' tem-extra' : '') });
+  const tgl = comBotao && h('button', {
     class: 'btn tgl', type: 'button', 'aria-expanded': 'false',
     onclick: (e) => { const o = bar.classList.toggle('aberta'); e.currentTarget.setAttribute('aria-expanded', String(o)); },
-  }, 'Filtros', pino);
+  }, temExtra ? 'Mais filtros' : 'Filtros', pinoExtra, pinoTodos);
   bar.append(defs.map((d) => d.tipo === 'busca'
     ? h('input', { type: 'search', placeholder: d.placeholder || 'Buscar…', 'aria-label': d.placeholder || 'Buscar', value: f[d.chave] || '', oninput: (e) => { f[d.chave] = e.target.value; onChange(); } })
-    : h('select', { 'aria-label': d.rotulo, onchange: (e) => { f[d.chave] = e.target.value; mudou(); } },
+    : h('select', { class: d.extra ? 'extra' : null, 'aria-label': d.rotulo, onchange: (e) => { f[d.chave] = e.target.value; mudou(); } },
       h('option', { value: '' }, d.rotulo), d.opcoes.map(([v, l]) => h('option', { value: v, selected: String(f[d.chave] ?? '') === String(v) }, l)))));
   // O botão entra logo depois da busca, para os dois dividirem a mesma linha no celular.
   if (tgl) { const busca = bar.querySelector('input[type="search"]'); if (busca) busca.after(tgl); else bar.prepend(tgl); }
