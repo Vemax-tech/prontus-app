@@ -193,6 +193,9 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
 @media (max-width: 560px) {
   /* Duas colunas no celular: um número por linha virava uma rolagem de oito telas. */
   .stats { grid-template-columns: 1fr 1fr; }
+  /* Número ímpar de indicadores: o último ocupa a linha inteira. A regra geral ("estica até o fim")
+     o empurrava para a segunda coluna e deixava um buraco pintado na primeira. */
+  .stats > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .stat { padding: 12px 13px; }
   .stat b { font-size: 1.5rem; }
 }
@@ -237,6 +240,13 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
 .rail .st span { display: block; font-size: .75rem; line-height: 1.35; color: var(--ink-3); }
 .rail .st.atual span { color: var(--ink); font-weight: 600; }
 .railinfo { font-size: .75rem; color: var(--ink-3); margin-bottom: 18px; }
+/* No celular os pontos cabem, os nomes não: o passo atual saía cortado ("Com o m…") e a trilha ganhava
+   barra de rolagem. Os nomes ficam só para leitor de tela; quem vê lê o passo em "Etapa 5 de 8". */
+@media (max-width: 560px) {
+  .rail { overflow: visible; }
+  .rail .st { min-width: 0; padding: 14px 0 0 0; }
+  .rail .st span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
 
 /* ---------------------------------------------------------------- linha do tempo */
 .tl { position: relative; padding-left: 20px; }
@@ -356,6 +366,9 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
 .chip:hover { border-color: var(--brand-2); color: var(--ink); }
 .chip:focus-visible { outline: 2px solid var(--brand-2); outline-offset: 1px; }
 
+/* `display: flex` abaixo vence o `display: none` que o navegador dá a [hidden]; sem esta linha a barra
+   de lote, escondida, aparecia como uma pílula vazia entre o filtro e a lista. */
+.lote[hidden] { display: none; }
 /* Barra do trabalho em lote. Fica ENTRE o filtro e a lista, porque é sobre a lista que ela age:
    o que está filtrado fora não entra no lote, e a barra precisa estar onde isso é óbvio. */
 .lote {
@@ -428,6 +441,13 @@ a.stat:hover, button.stat:hover { background: var(--surface-2); }
 .det > .aside { display: grid; gap: 16px; position: sticky; top: calc(var(--h-head) + 16px); }
 .det > .main { display: grid; gap: 16px; min-width: 0; }
 @media (max-width: 1040px) { .det { grid-template-columns: 1fr; } .det > .aside { position: static; } }
+/* Detalhe do caso em uma coluna: primeiro o que se age (resumo, pasta, tarefas), depois os registros, e a
+   linha do tempo por último. Sem isto ela ficava entre os registros e a pasta, a duas telas de distância. */
+@media (max-width: 1040px) {
+  .det.caso > .main { display: contents; }
+  .det.caso > .aside { order: -1; }
+  .det.caso > .main > :last-child { order: 1; }
+}
 
 /* ---------------------------------------------------------------- matriz de permissões */
 .matriz table { font-size: .78rem; }

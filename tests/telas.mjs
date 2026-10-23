@@ -478,6 +478,17 @@ check(['Comunicação', 'Entrega', 'Aberta em'].every((c) => cabecalhos().includ
 trocarPapel('admin');
 await abrirTela('painel.js');
 check(Boolean(painelPorTitulo('Onde o trabalho está parado')), 'o Administrador continua vendo o painel inteiro');
+// --- celular: o que o jsdom não vê (layout) mas o código precisa garantir
+console.log('\n## Celular: regras que seguram o layout estreito');
+const { readFileSync } = await import('node:fs');
+const cssApp = readFileSync(path.join(REPO, 'css/app.css'), 'utf8');
+check(/\.lote\[hidden\]\s*\{\s*display:\s*none/.test(cssApp), 'a barra de lote escondida não aparece como pílula vazia (display:flex vencia o [hidden])');
+check(/\.stats\s*>\s*:last-child:nth-child\(odd\)\s*\{\s*grid-column:\s*1\s*\/\s*-1/.test(cssApp), 'indicador ímpar no celular ocupa a linha inteira, sem buraco');
+check(/\.rail\s+\.st\s+span\s*\{\s*position:\s*absolute/.test(cssApp), 'a trilha no celular guarda os nomes só para leitor de tela');
+trocarPapel('callcenter');
+await abrirTela('solicitacao.js', 'initFicha', `solicitacoes/detalhe.html?id=${comMedico.id}`);
+check(doc.querySelector('.det.caso > .main') && doc.querySelector('.det.caso > .aside'), 'o detalhe marca o seu layout (.det.caso) para o celular reordenar: ações antes, linha do tempo por último');
+check(/\.det\.caso\s*>\s*\.main\s*>\s*:last-child\s*\{\s*order:\s*1/.test(cssApp), 'e a linha do tempo, último painel, vai para o fim');
 
 // --- o Administrador gerencia as contas de verdade
 console.log('\n## Administrador: usuários reais');
