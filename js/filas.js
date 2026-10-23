@@ -1,5 +1,5 @@
 // PRONTUS — quais filas de trabalho existem para cada papel, e como se repartem entre
-// "Fila atual" (sem dono) e "Minha fila" (de quem assumiu).
+// "Fila da equipe" (sem dono) e "Meus casos" (de quem assumiu).
 //
 // Mora aqui, fora de js/modules/, porque DUAS coisas dependem desta definição: a tela de filas e o
 // número que aparece no menu. Enquanto cada uma contava do seu jeito, o menu dizia 4 e a tela dizia

@@ -99,7 +99,7 @@ function ondeEstaParado(abertas, papel) {
 
 // ================================================================ quem opera
 /**
- * A tela de quem tem fila. O conteúdo vem de js/filas.js — as MESMAS filas da tela "Fila atual" e
+ * A tela de quem tem fila. O conteúdo vem de js/filas.js — as MESMAS filas da tela "Fila da equipe" e
  * do número no menu —, então o que esta tela promete é exatamente o que a próxima entrega. Enquanto
  * cada tela contava do seu jeito, a inicial dizia um número e a fila mostrava outro.
  */
@@ -153,11 +153,11 @@ async function telaDeEquipe(ctx, view, { abertas, metas, pronts }) {
       .slice(0, 8).map(linha));
 
   const minhaFila = painel('Os casos que você assumiu',
-    h('a', { class: 'btn sm', href: ROOT + 'minhafila/' }, 'Minha fila'),
+    h('a', { class: 'btn sm', href: ROOT + 'minhafila/' }, 'Meus casos'),
     meus.length
       ? h('div', {}, meus.slice(0, 6).map(linha))
       : h('p', { class: 'small muted' }, livres
-        ? `Você não assumiu nenhum caso. Há ${livres} esperando alguém pegar na Fila atual.`
+        ? `Você não assumiu nenhum caso. Há ${livres} esperando alguém pegar na Fila da equipe.`
         : 'Você não assumiu nenhum caso, e não há nada solto na fila da equipe.'));
 
   // AS DUAS LISTAS DE CASO FICAM NA COLUNA LARGA, e o gráfico de barras na estreita.
@@ -176,7 +176,7 @@ async function telaDeEquipe(ctx, view, { abertas, metas, pronts }) {
     h('p', { class: 'micro muted', style: 'margin-top:22px' }, icon('olho'),
       ' Clique numa linha para ver de quem é o caso e o que o paciente pediu, sem trocar de tela.'),
     h('p', { class: 'micro muted', style: 'margin-top:8px' }, icon('check'),
-      ' Os números acima são as suas filas, contadas pela mesma regra da tela "Fila atual" — o que'
+      ' Os números acima são as suas filas, contadas pela mesma regra da tela "Fila da equipe" — o que'
       + ' aparece aqui é exatamente o que você encontra lá.'));
 }
 

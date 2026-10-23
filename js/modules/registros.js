@@ -7,7 +7,7 @@ import { start, h, run, pageHead, empty, badge, dataTable, filtros, contem, tabs
 const ROOT = new URL('../../', import.meta.url).href;
 const quando = (iso) => new Date(iso).toLocaleString('pt-BR');
 
-export const init = () => start('registros/', 'Documentos e comunicações', async (ctx, view) => {
+export const init = () => start('registros/', 'Registros', async (ctx, view) => {
   const [sols, docs, coms, entregas] = await Promise.all([
     run(listar('solicitacoes')), run(listar('documentos')), run(listar('comunicacoes')), run(listar('entregas')),
   ]);
@@ -98,7 +98,7 @@ export const init = () => start('registros/', 'Documentos e comunicações', asy
   }
 
   view.append(
-    pageHead('Operação', 'Documentos e comunicações', 'Canal, horário, responsável, destinatário e resultado de cada registro.'),
+    pageHead('Operação', 'Registros', 'Documentos emitidos e comunicações: canal, horário, responsável, destinatário e resultado de cada registro.'),
     tabs([
       ['?aba=comunicacoes', `Comunicações (${coms.length})`],
       verDocs ? ['?aba=documentos', `Documentos (${docs.length})`] : null,
