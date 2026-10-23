@@ -229,6 +229,22 @@ O que falta para ir ao ar é a parte que não dá para demonstrar: as mesmas reg
 
 ---
 
+## Os dados no banco (esquema e regras)
+
+As migrations `0004_dados_esquema.sql` e `0005_dados_funcoes.sql` levam os dados do atendimento para o Postgres, com o acesso por papel **imposto pelo banco**. A interface ainda usa `js/dados.js` (memória do navegador); ligar as telas ao banco é o passo seguinte. Aplique as duas depois das anteriores, em ordem.
+
+- **Ninguém escreve direto.** O papel `authenticated` só tem `SELECT`. Toda mudança passa por uma função (`abrir_solicitacao`, `mover_solicitacao`, `mover_prontuario`, `registrar_avaliacao`…) que confere papel, etapa e condições, e cuja recusa desfaz tudo. Quem agiu é o `auth.uid()` do token, nunca um argumento.
+- **O fluxo é dado.** `etapas`, `transicoes` e `mov_validos` espelham `js/fluxo.js`, e o teste compara as duas listas linha a linha.
+- **Sem texto clínico.** A decisão do médico guarda só o desfecho e as duas assinaturas (quem decidiu, quem registrou). O documento guarda metadados e a referência do arquivo.
+- **O relato é sensível.** Mora em `solicitacao_relatos`, sem nenhum privilégio de leitura; só `ler_relato()` o devolve, ao Call Center e à Recepção, e cada leitura entra na auditoria.
+- **Auditoria imutável.** `auditoria_dados` é escrita só pelas funções, lida só pelo Administrador, e nem o dono da tabela a altera.
+
+Limite conhecido: campos de texto livre curto (`comunicacoes.texto`, `eventos.nota`, `solicitacoes.motivo`) são legíveis por todos os papéis e podem receber dado pessoal digitado por quem registra. Os modelos de mensagem padrão ainda citam o nome do paciente; tirá-lo deles é parte da ligação das telas.
+
+`npm run test:banco` roda 100+ verificações contra o Postgres local (uma pessoa de cada papel, pela API de verdade).
+
+---
+
 ## Dado pessoal sensível
 
 O sistema trata dado de saúde (LGPD art. 11). A clínica é controladora; quem fornece e opera o sistema é operadora. Consequências que já estão no desenho:
