@@ -521,6 +521,32 @@ for (const [papel, esperada] of Object.entries(ESPERADA)) {
   check(JSON.stringify(barraDeNavegacao()) === JSON.stringify(esperada), `${P.PAPEIS[papel]}: ${esperada.filter((x) => x !== '|').length} itens, em grupos separados por fio`);
 }
 check(!/Fila atual|Minha fila/.test(body()), 'os nomes antigos "Fila atual" e "Minha fila" não aparecem mais');
+// --- o detalhe do caso: sem painel vazio, sem caixa de explicação fixa, listas longas recolhidas
+console.log('\n## Detalhe do caso: só o que o caso tem');
+trocarPapel('recepcao');
+const { data: todasSols } = await D.listar('solicitacoes');
+const solComMedico = todasSols.find((s) => s.etapa === 'com_medico' && s.tipo === 'duvida_correcao');
+await abrirTela('solicitacao.js', 'initFicha', `solicitacoes/detalhe.html?id=${solComMedico.id}`);
+const paineis = () => [...doc.querySelectorAll('.det .panel h2')].map((x) => x.textContent);
+const pacDoCaso = D.pacientePor(solComMedico.paciente_id);
+check(doc.querySelector('.head .muted')?.textContent.includes(pacDoCaso.nome) && doc.querySelector('.head .muted').textContent.includes('prontuário PR-'), 'o cabeçalho já diz o paciente e a pasta, sem rolar até o Resumo');
+check(!paineis().includes('Retorno do médico'), 'sem retorno registrado, não há painel vazio repetindo a próxima ação');
+check(!doc.querySelector('.det .panel .note'), 'as explicações não são mais caixas fixas dentro dos painéis');
+check(doc.querySelectorAll('.det details.ajuda summary').length >= 2 && [...doc.querySelectorAll('details.ajuda')].every((x) => !x.open), 'elas viram "Sobre este painel", recolhido');
+const rotulosResumo = [...doc.querySelectorAll('.det .aside .dl dt')].map((x) => x.textContent);
+check(!rotulosResumo.includes('Tipo') && !rotulosResumo.includes('Tempo na etapa') && !rotulosResumo.includes('Prontuário'), 'o Resumo não repete o que o cabeçalho, a trilha e o painel do prontuário já dizem');
+check(doc.querySelectorAll('.det .main .panel:last-child .tl > li').length <= 5, 'a linha do tempo mostra no máximo os 5 mais recentes');
+const todos = [...doc.querySelectorAll('.det button')].find((b) => /^Mostrar todos \(\d+\)$/.test(b.textContent));
+check(Boolean(todos), 'e oferece "Mostrar todos"');
+const nEventos = Number(/\((\d+)\)/.exec(todos.textContent)[1]);
+clicar(todos);
+check(doc.querySelectorAll('.det .main .panel:last-child .tl > li').length === nEventos, `que abre a lista inteira (${nEventos} eventos)`);
+const solCedo = todasSols.find((s) => s.tipo === 'pedido_receita' && ['aberta', 'aguardando_prontuario', 'com_medico'].includes(s.etapa));
+await abrirTela('solicitacao.js', 'initFicha', `solicitacoes/detalhe.html?id=${solCedo.id}`);
+check(!paineis().includes('Entrega da receita'), 'antes de o paciente ser avisado, não há painel de entrega vazio');
+const solTarde = todasSols.find((s) => s.tipo === 'pedido_receita' && s.etapa === 'aguardando_entrega');
+await abrirTela('solicitacao.js', 'initFicha', `solicitacoes/detalhe.html?id=${solTarde.id}`);
+check(paineis().includes('Entrega da receita'), 'e ele aparece quando a entrega entra na vez');
 
 // --- o Administrador gerencia as contas de verdade
 console.log('\n## Administrador: usuários reais');

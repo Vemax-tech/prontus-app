@@ -21,6 +21,8 @@ import { PAPEIS } from '../permissoes.js';
 const ROOT = new URL('../../', import.meta.url).href;
 const PRIO = { alta: 'Alta', normal: 'Normal', baixa: 'Baixa' };
 const quando = (iso) => new Date(iso).toLocaleString('pt-BR');
+/** Explicação que só quem não conhece o painel precisa: recolhida, numa linha, em vez de uma caixa fixa. */
+const ajuda = (texto) => h('details', { class: 'ajuda' }, h('summary', {}, 'Sobre este painel'), h('p', {}, texto));
 const painel = (titulo, extra, ...corpo) => h('section', { class: 'panel' },
   h('div', { class: 'ph' }, h('h2', {}, titulo), extra),
   h('div', { class: 'pb' }, corpo));
@@ -57,6 +59,19 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
   const id = qs('id');
   let d = null;
   let relato = null;
+  // Listas longas mostram os mais recentes e guardam o resto atrás de um botão. O estado mora aqui,
+  // fora de montar(): quem abriu uma lista não a vê fechar quando a tela se redesenha.
+  const expandidos = new Set();
+  function recolhivel(chave, itens, limite, pintarItem, estilo) {
+    const todos = expandidos.has(chave);
+    return [
+      h('ul', { class: 'tl', style: estilo }, (todos ? itens : itens.slice(0, limite)).map(pintarItem)),
+      itens.length > limite ? h('button', {
+        class: 'btn sm', type: 'button', style: 'margin-top:10px', 'aria-expanded': String(todos),
+        onclick: () => { if (todos) expandidos.delete(chave); else expandidos.add(chave); pintar(); },
+      }, todos ? 'Mostrar só os mais recentes' : `Mostrar todos (${itens.length})`) : null,
+    ];
+  }
 
   async function recarregar() {
     d = await run(dossie(id));
@@ -344,14 +359,9 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
     const verPac = ctx.podeCompleto('paciente_identificacao') || ctx.pode('paciente_identificacao');
     return painel('Resumo', badge(F.ETAPAS[d.sol.etapa], corEtapa(d.sol.etapa)),
       h('dl', { class: 'dl' },
-        h('dt', {}, 'Tipo'), h('dd', {}, F.TIPOS[d.sol.tipo]),
         h('dt', {}, 'Paciente'), h('dd', {}, verPac
           ? h('span', {}, d.paciente.nome, h('div', { class: 'micro muted' }, `nasc. ${fmtDate(d.paciente.nascimento)} · ${d.paciente.telefone}`))
           : h('span', { class: 'small muted' }, 'reduzido para o seu papel')),
-        h('dt', {}, 'Prontuário'), h('dd', {}, d.prontuario
-          ? h('span', { class: 'mono' }, d.prontuario.codigo, h('div', { class: 'micro muted' }, `estante ${d.prontuario.local_arquivo}`))
-          : '—'),
-        h('dt', {}, 'Tempo na etapa'), h('dd', {}, desde(d.sol.etapa_desde)),
         h('dt', {}, 'Prioridade'), h('dd', {}, d.sol.prioridade === 'alta' ? badge('Alta', 'crit') : PRIO[d.sol.prioridade]),
         h('dt', {}, 'Aberta por'), h('dd', {}, nomeDe(d.sol.aberta_por), h('div', { class: 'micro muted' }, quando(d.sol.criado_em))),
         F.aberta(d.sol) && [h('dt', {}, 'Com quem está'), h('dd', {}, d.sol.assumido_por
@@ -385,11 +395,11 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
           onclick: () => registrarMov(m),
         }, m.rotulo)))
         : h('p', { class: 'small muted', style: 'margin:12px 0' }, `Nenhum registro de prontuário é do seu papel agora. O próximo é do ${proximoDonoProntuario()}.`),
-      nota('', 'Controlado de forma independente do contato com o paciente: devolução e arquivamento podem acontecer antes ou depois de o caso ser concluído.'),
+      ajuda('Controlado de forma independente do contato com o paciente: devolução e arquivamento podem acontecer antes ou depois de o caso ser concluído.'),
       d.movimentos.length
-        ? h('ul', { class: 'tl', style: 'margin-top:12px' }, [...d.movimentos].reverse().map((m) => h('li', {},
+        ? recolhivel('movimentos', [...d.movimentos].reverse(), 3, (m) => h('li', {},
           h('div', { class: 'row between' }, h('b', {}, F.MOVIMENTOS[m.tipo]), h('span', { class: 'when' }, quando(m.criado_em))),
-          h('p', { class: 'micro muted' }, nomeDe(m.ator_id), m.nota ? ' · ' + m.nota : ''))))
+          h('p', { class: 'micro muted' }, nomeDe(m.ator_id), m.nota ? ' · ' + m.nota : '')), 'margin-top:12px')
         : h('p', { class: 'small muted', style: 'margin-top:12px' }, 'Nenhuma movimentação ainda.'));
   }
 
@@ -418,14 +428,8 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
 
   // ---------------------------------------------------------------- avaliação, documentos, entrega
   function blocoClinico() {
-    if (!d.avaliacoes.length) {
-      return ctx.pode('avaliacao_existencia')
-        ? painel('Retorno do médico', badge('ainda não registrado', 'dim'),
-          h('p', { class: 'small muted' }, d.sol.etapa === 'com_medico'
-            ? `O caso está com ${d.sol.medico_nome || 'o médico'}. A Recepção registra o retorno quando ele decidir.`
-            : 'Nada registrado ainda para este caso.'))
-        : null;
-    }
+    // Sem retorno ainda, o painel só repetia o que a Próxima ação já diz (o caso está com o médico).
+    if (!d.avaliacoes.length) return null;
     const rotulo = {
       respondido: 'Respondido', corrigido: 'Receita corrigida', receita_emitida: 'Receita emitida',
       nao_aprovado: 'Não aprovado', precisa_esclarecimento: 'Precisa de esclarecimento',
@@ -463,7 +467,7 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
           podeAbrir
             ? h('button', { class: 'btn sm', onclick: () => abrirDoc(doc) }, 'Abrir')
             : h('span', { class: 'micro muted' }, 'sem permissão'))))),
-      nota('', 'Correção nunca sobrescreve: cada versão coexiste e a anterior fica marcada como substituída.'));
+      ajuda('Correção nunca sobrescreve: cada versão coexiste e a anterior fica marcada como substituída.'));
   }
 
   function abrirDoc(doc) {
@@ -478,6 +482,8 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
   function blocoEntrega() {
     if (d.sol.tipo !== 'pedido_receita') return null;
     const e = d.entrega;
+    // Antes de o paciente ser avisado não há entrega a registrar: o painel vazio só ocupava espaço.
+    if (!e && !['aguardando_contato_paciente', 'aguardando_entrega', 'concluida'].includes(d.sol.etapa)) return null;
     const podeReg = ctx.pode('entrega_registrar', 'editar') || ctx.pode('entrega_confirmar_fisica', 'editar');
     const opcoes = () => {
       if (!e) return [];
@@ -486,7 +492,7 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
     };
     return painel('Entrega da receita',
       e ? badge(F.ENTREGA_ESTADOS[e.estado], F.ENTREGA_TERMINAL.includes(e.estado) ? 'ok' : e.estado === 'falha' ? 'crit' : 'warn') : badge('não registrada', 'dim'),
-      nota('', 'Envio, entrega e leitura são estados diferentes. Tentativa de envio não conclui o caso.'),
+      ajuda('Envio, entrega e leitura são estados diferentes. Tentativa de envio não conclui o caso.'),
       e ? h('div', { style: 'margin-top:12px' },
         h('p', { class: 'small' }, 'Forma: ', h('b', {}, F.ENTREGA_MODOS[e.modo])),
         h('ul', { class: 'tl', style: 'margin-top:12px' }, [...e.historico].reverse().map((x) => h('li', {},
@@ -506,7 +512,7 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
     if (!ctx.pode('comunicacao_ver')) return null;
     const podeReg = ctx.pode('comunicacao_registrar', 'editar');
     return painel('Comunicações', podeReg && h('button', { class: 'btn sm', onclick: novaComunicacao }, 'Registrar'),
-      nota('', 'O sistema não envia nada. Cada linha é o registro do que foi feito fora dele, com o resultado conhecido.'),
+      ajuda('O sistema não envia nada. Cada linha é o registro do que foi feito fora dele, com o resultado conhecido.'),
       d.comunicacoes.length
         ? h('ul', { class: 'tl', style: 'margin-top:12px' }, [...d.comunicacoes].reverse().map((c) => h('li', { class: c.tipo === 'contato_paciente' ? 'marco' : '' },
           h('div', { class: 'row between' },
@@ -555,19 +561,26 @@ export const initFicha = () => start('solicitacoes/', 'Solicitação', async (ct
 
   function blocoHistorico() {
     return painel('Linha do tempo', h('span', { class: 'micro muted' }, `${d.eventos.length} eventos`),
-      nota('', 'Somente acréscimo: reabertura e cancelamento não apagam nada.'),
-      h('ul', { class: 'tl', style: 'margin-top:12px' }, [...d.eventos].reverse().map((e) => h('li', { class: F.ETAPAS_FIM.includes(e.para_etapa) ? 'marco' : '' },
+      ajuda('Somente acréscimo: reabertura e cancelamento não apagam nada.'),
+      recolhivel('eventos', [...d.eventos].reverse(), 5, (e) => h('li', { class: F.ETAPAS_FIM.includes(e.para_etapa) ? 'marco' : '' },
         h('div', { class: 'row between' },
           // `titulo` existe nos eventos que não são mudança de etapa (assumir, liberar): sem ele a
           // linha sairia como "Com o médico → Com o médico".
           h('b', {}, e.titulo || (e.de_etapa ? `${F.ETAPAS[e.de_etapa]} → ${F.ETAPAS[e.para_etapa]}` : F.ETAPAS[e.para_etapa])),
           h('span', { class: 'when' }, quando(e.criado_em))),
-        h('p', { class: 'micro muted' }, nomeDe(e.ator_id), e.nota ? ' · ' + e.nota : '')))));
+        h('p', { class: 'micro muted' }, nomeDe(e.ator_id), e.nota ? ' · ' + e.nota : '')), 'margin-top:12px'));
+  }
+
+  function identificacao() {
+    const verPac = ctx.podeCompleto('paciente_identificacao') || ctx.pode('paciente_identificacao');
+    const partes = [verPac && d.paciente?.nome, d.prontuario?.codigo && `prontuário ${d.prontuario.codigo}`].filter(Boolean);
+    return partes.length ? partes.join(' · ') : null;
   }
 
   function montar() {
     return h('div', {},
-      pageHead(F.TIPOS[d.sol.tipo], '#' + d.sol.protocolo, null,
+      // Quem é o paciente e qual pasta, logo abaixo do protocolo: era preciso rolar até o Resumo para saber.
+      pageHead(F.TIPOS[d.sol.tipo], '#' + d.sol.protocolo, identificacao(),
         h('button', { class: 'btn sm', onclick: () => copyText(String(d.sol.protocolo)) }, icon('copy'), 'Copiar protocolo'),
         h('button', { class: 'btn sm', onclick: () => window.print() }, icon('print'), 'Imprimir'),
         h('a', { class: 'btn sm', href: ROOT + 'solicitacoes/' }, 'Voltar à lista')),
