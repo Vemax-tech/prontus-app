@@ -71,7 +71,7 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
   });
 
   // ---------------------------------------------------------------- colunas
-  const cols = [
+  const todas = [
     { key: 'protocolo', label: 'Protocolo', sort: (s) => s.protocolo, render: (s) => h('span', {},
       h('a', { class: 't mono', href: ROOT + `solicitacoes/detalhe.html?id=${s.id}` }, '#' + s.protocolo),
       h('div', { class: 'small muted' }, F.TIPO_CURTO[s.tipo])) },
@@ -125,6 +125,11 @@ export const init = () => start('solicitacoes/', 'Solicitações', async (ctx, v
     { key: 'prio', label: 'Prioridade', sort: (s) => ['alta', 'normal', 'baixa'].indexOf(s.prioridade), render: (s) => (s.prioridade === 'normal' ? h('span', { class: 'small muted' }, '—') : badge(PRIO[s.prioridade], s.prioridade === 'alta' ? 'crit' : 'dim')) },
     { key: 'criado', label: 'Aberta em', sort: (s) => s.criado_em, render: (s) => h('span', { class: 'small' }, fmtDate(s.criado_em), h('div', { class: 'small muted' }, nomeDe(s.aberta_por))) },
   ];
+
+  // Quem não acompanha o retorno clínico (o Arquivo) só lida com a pasta física: contato com o
+  // paciente, entrega do documento e quem abriu o pedido são de outras equipes e só atrapalham a lista.
+  const soPasta = !ctx.pode('avaliacao_existencia');
+  const cols = soPasta ? todas.filter((c) => !['com', 'entrega', 'criado'].includes(c.key)) : todas;
 
   function draw() {
     const shown = lista.filter((s) => (!f.abertas || F.aberta(s))

@@ -83,12 +83,15 @@ const itemCaso = (s, metas, ctx, abertos, pronts = []) => linhaExpansivel({
 });
 
 /** "Onde o trabalho está parado" — uma série, o comprimento é a quantidade. Serve aos dois. */
-function ondeEstaParado(abertas) {
+function ondeEstaParado(abertas, papel) {
+  // Com `papel`, só as etapas em que o caso espera por AQUELE papel: quem opera não precisa do
+  // volume das outras equipes, e o painel inteiro fica para o Administrador.
+  const doPapel = papel ? abertas.filter((s) => F.papeisDaEtapa(s).includes(papel)) : abertas;
   const porEtapa = Object.entries(F.ETAPAS)
-    .map(([e, rot]) => ({ e, rot, n: abertas.filter((s) => s.etapa === e).length }))
+    .map(([e, rot]) => ({ e, rot, n: doPapel.filter((s) => s.etapa === e).length }))
     .filter((x) => x.n);
   const max = Math.max(1, ...porEtapa.map((x) => x.n));
-  return painel('Onde o trabalho está parado', h('span', { class: 'micro muted' }, `${abertas.length} em aberto`),
+  return painel(papel ? 'Na vez da sua equipe' : 'Onde o trabalho está parado', h('span', { class: 'micro muted' }, `${doPapel.length} em aberto`),
     porEtapa.length
       ? h('div', { style: 'display:grid;gap:9px' }, porEtapa.map((x) => rowbar(x.rot, x.n, max)))
       : h('p', { class: 'small muted' }, 'Nada em aberto.'));
@@ -169,7 +172,7 @@ async function telaDeEquipe(ctx, view, { abertas, metas, pronts }) {
     indicadores.length ? stats(indicadores) : null,
     h('div', { class: 'det' },
       h('div', { class: 'main' }, suaVez, minhaFila),
-      h('div', { class: 'aside' }, ondeEstaParado(abertas))),
+      h('div', { class: 'aside' }, ondeEstaParado(abertas, papel))),
     h('p', { class: 'micro muted', style: 'margin-top:22px' }, icon('olho'),
       ' Clique numa linha para ver de quem é o caso e o que o paciente pediu, sem trocar de tela.'),
     h('p', { class: 'micro muted', style: 'margin-top:8px' }, icon('check'),
