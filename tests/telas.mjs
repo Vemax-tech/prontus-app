@@ -33,6 +33,19 @@ const P = await mod('permissoes.js');
 const D = await mod('dados.js');
 const Auth = await mod('auth.js');
 
+// A lista de contas vem do banco (js/contas.js). Aqui não há banco: um servidor falso responde só
+// o que as telas pedem, e o que o banco de verdade responde é conferido em tests/auth.mjs.
+const CONTAS_FALSAS = [
+  { id: 'c-1', email: 'admin@clinica.test', nome: 'Beatriz Lima', cargo: 'Coordenação', papel: 'admin', ativo: true, tem_perfil: true, criado_em: '2026-01-05T10:00:00Z', ultimo_acesso: '2026-10-20T09:00:00Z' },
+  { id: 'c-2', email: 'arquivo@clinica.test', nome: 'Silvio Prado', cargo: 'Arquivo', papel: 'arquivo', ativo: false, tem_perfil: true, criado_em: '2026-01-06T10:00:00Z', ultimo_acesso: null },
+  { id: 'c-3', email: 'nova@clinica.test', nome: null, cargo: null, papel: null, ativo: false, tem_perfil: false, criado_em: '2026-10-21T10:00:00Z', ultimo_acesso: null },
+];
+Auth.configurar({ url: 'http://banco.test', anonKey: 'chave-de-teste' });
+globalThis.fetch = async (url) => ({
+  status: 200, ok: true,
+  json: async () => (/usuarios_da_clinica/.test(String(url)) ? CONTAS_FALSAS : []),
+});
+
 const wait = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 const body = () => dom.window.document.getElementById('app').textContent;
 // Entra como a pessoa do papel, sem rede: grava a sessão que o login gravaria. Os ids são os da
@@ -446,6 +459,19 @@ check(['Comunicação', 'Entrega', 'Aberta em'].every((c) => cabecalhos().includ
 trocarPapel('admin');
 await abrirTela('painel.js');
 check(Boolean(painelPorTitulo('Onde o trabalho está parado')), 'o Administrador continua vendo o painel inteiro');
+
+// --- o Administrador gerencia as contas de verdade
+console.log('\n## Administrador: usuários reais');
+trocarPapel('admin');
+await abrirTela('usuarios.js');
+const textoUsuarios = body();
+check(/Beatriz Lima/.test(textoUsuarios) && /admin@clinica\.test/.test(textoUsuarios), 'a lista mostra nome e e-mail da conta, vindos do banco');
+check(/aguardando liberação/i.test(textoUsuarios) && /nova@clinica\.test/.test(textoUsuarios), 'conta sem perfil aparece como aguardando liberação');
+check(!/Excluir/.test(textoUsuarios), 'não existe "Excluir": quem já agiu é desativado, não apagado');
+check([...doc.querySelectorAll('button')].some((b) => b.textContent === 'Liberar acesso'), 'e a conta pendente oferece "Liberar acesso"');
+check(/Últimas alterações de conta/.test(textoUsuarios), 'a trilha de alterações de conta aparece na própria tela');
+await abrirTela('painel.js');
+check(/1 conta\(s\) aguardando liberação/.test(body()) && /1 conta\(s\) desativada/.test(body()), 'o painel do Administrador conta as contas reais, inclusive as pendentes');
 
 // ================================================================ resultado
 console.log('');

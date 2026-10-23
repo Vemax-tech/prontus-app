@@ -4,8 +4,8 @@ Roteiro para ligar o login real (Supabase Auth + Postgres) no ambiente publicado
 a chave `service_role`, e nenhuma senha passa por arquivo do repositório.
 
 1. **Projeto no Supabase.** Crie o projeto e anote a *Project URL* e a chave *anon* (Settings → API).
-2. **Migrations.** No SQL Editor, execute na ordem `supabase/migrations/0001_perfis.sql` e
-   `0002_ultimo_admin_concorrente.sql`. (Ou `supabase link` + `supabase db push`.)
+2. **Migrations.** No SQL Editor, execute na ordem `supabase/migrations/0001_perfis.sql`,
+   `0002_ultimo_admin_concorrente.sql` e `0003_admin_contas.sql`. (Ou `supabase link` + `supabase db push`.)
 3. **Auth no painel** (Authentication):
    - Sign In / Providers → desligue *Allow new users to sign up* (só a clínica cria contas).
    - Policies/Password → mínimo de 12 caracteres e, se o plano permitir, *Prevent use of leaked passwords*.
@@ -19,4 +19,6 @@ a chave `service_role`, e nenhuma senha passa por arquivo do repositório.
 7. **Publicar** (`npm run deploy`, conforme o README) e testar: entrar, sair, abrir uma página sem
    sessão (deve ir para o login) e entrar com uma conta de cada papel.
 
-Depois de entrar como administrador, crie as demais contas no painel e ajuste o perfil de cada uma.
+Depois de entrar como administrador, crie cada nova conta no painel (Authentication → Users, com
+*Auto Confirm User*). Ela aparece na tela **Usuários** como "aguardando liberação": escolha nome, cargo e
+papel. A tela também permite editar, trocar o papel e desativar, e registra cada mudança.

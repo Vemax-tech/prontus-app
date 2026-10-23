@@ -9,7 +9,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { JSDOM, VirtualConsole } from 'jsdom';
-import { anonKey, CONTAS, SENHA_LOCAL, URL_LOCAL } from '../supabase/local/contas.mjs';
+import { anonKey, servicoKey, CONTAS, SENHA_LOCAL, URL_LOCAL } from '../supabase/local/contas.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const falhas = [];
@@ -42,6 +42,10 @@ try { await fetch(URL_LOCAL + '/auth/v1/health'); } catch {
   console.log('✗ A stack local de login não está no ar. Rode: cd supabase/local && docker compose up -d && cd ../.. && node supabase/local/preparar.mjs');
   process.exit(1);
 }
+
+// A auditoria de contas é imutável; o que este teste gravar nela, ele mesmo apaga no fim (só o dono
+// do banco local consegue, desligando os gatilhos da sessão).
+const marcoAuditoria = Number(psql('select coalesce(max(id), 0) from public.auditoria_contas')) || 0;
 
 // ================================================================ credenciais
 console.log('\n## Login: senha conferida pelo servidor');
@@ -192,6 +196,83 @@ check(guardado()?.perfil?.papel === 'admin', 'e a sessão ficou guardada com o p
 destino = null;
 await L.init();
 check(destino === '/relatorios/', 'quem já entrou e abre o login é mandado adiante, sem digitar de novo');
+
+// ================================================================ contas (administrador)
+console.log('\n## Contas reais: só o administrador, e tudo fica registrado');
+const C = await import(pathToFileURL(path.join(REPO, 'js/contas.js')).href);
+const como = async (email) => { sessionStorage.clear(); await A.entrar(email, SENHA_LOCAL); return guardado(); };
+const psqlErro = (sql) => spawnSync('docker', ['exec', 'prontus-auth-db-1', 'psql', '-U', 'postgres', '-d', 'prontus', '-c', sql], { encoding: 'utf8' }).stderr;
+
+// quem não é administrador
+let quem = await como('recepcao@prontus.local');
+let l = await C.listarContas();
+check(l.error?.code === '42501', 'a Recepção não lista as contas (o banco recusa com 42501)');
+let up = await C.atualizarPerfil(quem.perfil.id, { nome: 'Outro Nome' });
+check(up.error?.code === '42501' && psql(`select nome from perfis where id='${quem.perfil.id}'`) !== 'Outro Nome', 'nem edita o próprio perfil (a RLS filtra e a recusa é explícita)');
+t = await rest('auditoria_contas?select=id', { token: quem.access_token });
+check(t.status === 200 && t.json.length === 0, 'a trilha de contas não devolve nenhuma linha a quem não é administrador');
+t = await rest('rpc/liberar_conta', { token: quem.access_token, metodo: 'POST', corpo: { p_id: quem.perfil.id, p_nome: 'Zé', p_cargo: '', p_papel: 'admin' } });
+check(t.status >= 400 && /Só o Administrador|já tem perfil/.test(JSON.stringify(t.json)), 'e não libera conta');
+t = await rest('rpc/usuarios_da_clinica', { metodo: 'POST', corpo: {} });
+check(t.status >= 400, 'sem login, a lista de contas é recusada');
+
+// o administrador
+quem = await como('admin@prontus.local');
+const adm2 = quem;
+l = await C.listarContas();
+check(!l.error && l.data.length >= CONTAS.length && l.data.every((c) => c.email), 'o administrador lista as contas, com e-mail');
+check(!/password|encrypted|hash|token/i.test(JSON.stringify(l.data)), 'e a lista não traz senha, hash nem token');
+
+const emailNovo = `pendente-${Date.now()}@prontus.local`;
+const criada = await (await fetch(URL_LOCAL + '/auth/v1/admin/users', {
+  method: 'POST', headers: { apikey: anonKey, authorization: `Bearer ${servicoKey}`, 'content-type': 'application/json' },
+  body: JSON.stringify({ email: emailNovo, password: SENHA_LOCAL, email_confirm: true }),
+})).json();
+l = await C.listarContas();
+const pend = l.data.find((c) => c.id === criada.id);
+check(Boolean(pend) && !pend.temPerfil && !pend.ativo && l.data[0].id === criada.id, 'conta criada no login e sem perfil aparece primeiro, como aguardando liberação');
+r = await A.entrar(emailNovo, SENHA_LOCAL);
+check(/sem acesso|desativada|não tem acesso/i.test(r.erro || ''), 'e enquanto não for liberada, a pessoa não entra');
+
+quem = await como('admin@prontus.local');
+let lib = await C.liberarConta({ id: criada.id, nome: '  Pessoa Teste  ', cargo: '', papel: 'arquivo' });
+check(!lib.error && psql(`select nome||'|'||coalesce(cargo,'-')||'|'||papel from perfis where id='${criada.id}'`) === 'Pessoa Teste|-|arquivo', 'liberar cria o perfil (nome aparado, cargo vazio vira nulo)');
+lib = await C.liberarConta({ id: criada.id, nome: 'Outra', cargo: '', papel: 'admin' });
+check(lib.error && /já tem perfil/.test(lib.error.message), 'liberar duas vezes não sobrescreve o perfil');
+up = await C.atualizarPerfil(criada.id, { papel: 'root' });
+check(up.error?.code === '23514', 'papel fora da lista é recusado pelo banco');
+up = await C.atualizarPerfil(criada.id, { id: quem.perfil.id, criado_em: '2000-01-01', papel: 'recepcao', cargo: 'Recepção noturna' });
+check(!up.error && up.data.id === criada.id && up.data.papel === 'recepcao', 'trocar papel e cargo funciona, e campos fora da lista (id, criado_em) são ignorados');
+up = await C.atualizarPerfil(criada.id, { ativo: false });
+check(!up.error && psql(`select ativo from perfis where id='${criada.id}'`) === 'f', 'desativar funciona');
+r = await A.entrar(emailNovo, SENHA_LOCAL);
+check(/sem acesso|desativada|não tem acesso/i.test(r.erro || ''), 'e a conta desativada deixa de entrar');
+
+quem = await como('admin@prontus.local');
+const aud = await C.listarAuditoriaContas(40);
+const dela = (aud.data || []).filter((a) => a.alvo_id === criada.id);
+check(['perfil_criado', 'papel_alterado', 'perfil_editado', 'desativado'].every((a) => dela.some((x) => x.acao === a)), 'cada alteração virou uma linha na auditoria de contas');
+check(dela.length > 0 && dela.every((x) => x.ator_id === adm2.perfil.id), 'quem agiu vem do token do banco, não de algo que o navegador informa');
+const editado = dela.find((x) => x.acao === 'perfil_editado');
+check(JSON.stringify(editado?.detalhe) === '{"campos":["cargo"]}', 'a edição registra QUAIS campos mudaram, sem copiar o conteúdo');
+check(dela.find((x) => x.acao === 'papel_alterado')?.detalhe?.de === 'arquivo' && dela.find((x) => x.acao === 'papel_alterado')?.detalhe?.para === 'recepcao', 'a troca de papel registra de onde e para onde');
+
+// imutável
+t = await rest(`auditoria_contas?alvo_id=eq.${criada.id}`, { token: quem.access_token, metodo: 'DELETE' });
+check(t.status >= 400, 'nem o administrador apaga a auditoria pela API');
+t = await rest(`auditoria_contas?alvo_id=eq.${criada.id}`, { token: quem.access_token, metodo: 'PATCH', corpo: { acao: 'reativado' } });
+check(t.status >= 400, 'nem altera');
+t = await rest('auditoria_contas', { token: quem.access_token, metodo: 'POST', corpo: { acao: 'perfil_criado', alvo_id: criada.id } });
+check(t.status >= 400, 'nem escreve uma linha por conta própria (só o gatilho escreve)');
+check(/não pode ser alterada/.test(psqlErro(`delete from public.auditoria_contas where alvo_id='${criada.id}'`)), 'e o próprio banco, até para o dono da tabela, recusa apagar ou alterar');
+
+// apagar a conta no login remove o perfil, e isso também fica registrado
+await fetch(`${URL_LOCAL}/auth/v1/admin/users/${criada.id}`, { method: 'DELETE', headers: { apikey: anonKey, authorization: `Bearer ${servicoKey}` } });
+check(psql(`select count(*) from public.auditoria_contas where alvo_id='${criada.id}' and acao='perfil_removido'`) === '1', 'remover a conta no login deixa o "perfil removido" na auditoria');
+
+// limpeza: só o que este teste gravou
+psql(`set session_replication_role = replica; delete from public.auditoria_contas where id > ${marcoAuditoria}`);
+check(psql('select count(*) from public.auditoria_contas where id > ' + marcoAuditoria) === '0', '(limpeza do que o teste gravou na auditoria local)');
 
 console.log('');
 if (falhas.length) { console.log(`✗ ${falhas.length} falha(s)`); falhas.forEach((f) => console.log(' - ' + f)); process.exit(1); }

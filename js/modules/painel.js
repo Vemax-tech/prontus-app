@@ -14,6 +14,7 @@
 //    fila: quem cobra não disputa trabalho com quem é cobrado.
 import * as F from '../fluxo.js';
 import { listar, configAtual, pacientePor, nomeDe } from '../dados.js';
+import { listarContas } from '../contas.js';
 import { situacao, atrasadas, explicar } from '../prazos.js';
 import { dadosDasFilas, filasDoPapel, repartir, proximoCaso } from '../filas.js';
 import {
@@ -182,7 +183,8 @@ async function telaDeEquipe(ctx, view, { abertas, metas, pronts }) {
 
 // ================================================================ quem administra
 async function telaDeAdmin(ctx, view, { sols, abertas, metas, tarefas, pronts, docs, entregas }) {
-  const [usuarios, auditoria] = await Promise.all([run(listar('usuarios')), run(listar('auditoria'))]);
+  const [contas, auditoria] = await Promise.all([run(listarContas()), run(listar('auditoria'))]);
+  const usuarios = contas || [];
   const abertos = new Set();
   const linha = (s) => itemCaso(s, metas, ctx, abertos, pronts);
   const emEtapa = (...e) => abertas.filter((s) => e.includes(s.etapa));
@@ -250,14 +252,20 @@ async function telaDeAdmin(ctx, view, { sols, abertas, metas, tarefas, pronts, d
         h('div', { class: 'micro muted' }, 'envio tentado não conta: tentativa não é entrega'))));
 
   // ---------- quem tem acesso (só o Administrador vê, e é ele quem mexe)
-  const ativos = usuarios.filter((u) => u.ativo !== false);
+  // Contas de verdade (js/contas.js). Uma conta sem perfil ainda não entra: conta à parte.
+  const comPerfil = usuarios.filter((u) => u.temPerfil);
+  const ativos = comPerfil.filter((u) => u.ativo);
+  const aguardando = usuarios.length - comPerfil.length;
   const equipe = painel('Quem tem acesso', h('a', { class: 'btn sm', href: ROOT + 'usuarios/' }, 'Gerenciar'),
     h('ul', { class: 'ul-list' }, ['callcenter', 'arquivo', 'recepcao', 'admin'].map((p) => {
-      const n = ativos.filter((u) => u.papeis.includes(p)).length;
+      const n = ativos.filter((u) => u.papel === p).length;
       return h('li', { class: 'row between' }, h('span', {}, PAPEIS[p]), badge(`${n} ativo${n === 1 ? '' : 's'}`, n ? '' : 'crit'));
     })),
-    usuarios.length > ativos.length
-      ? h('p', { class: 'micro muted', style: 'margin-top:8px' }, `${usuarios.length - ativos.length} conta(s) desativada(s) — continuam no histórico, sem acesso.`)
+    comPerfil.length > ativos.length
+      ? h('p', { class: 'micro muted', style: 'margin-top:8px' }, `${comPerfil.length - ativos.length} conta(s) desativada(s) — continuam no histórico, sem acesso.`)
+      : null,
+    aguardando
+      ? h('p', { class: 'micro', style: 'margin-top:8px;color:var(--warn)' }, `${aguardando} conta(s) aguardando liberação.`)
       : null);
 
   // ---------- últimas ações: o "acompanhar tudo" com nome e horário

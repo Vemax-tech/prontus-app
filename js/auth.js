@@ -49,7 +49,7 @@ export async function configurado() { const c = await config(); return Boolean(c
 
 // ---------------------------------------------------------------- HTTP
 /** Devolve { status, corpo }; nunca lança por erro de rede — devolve status 0. */
-async function http(caminho, { metodo = 'GET', corpo, token } = {}) {
+async function http(caminho, { metodo = 'GET', corpo, token, extra } = {}) {
   const c = await config();
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), TEMPO_LIMITE_MS);
@@ -59,6 +59,7 @@ async function http(caminho, { metodo = 'GET', corpo, token } = {}) {
       headers: {
         apikey: c.anonKey, authorization: `Bearer ${token || c.anonKey}`,
         ...(corpo ? { 'content-type': 'application/json' } : {}),
+        ...extra,
       },
       body: corpo ? JSON.stringify(corpo) : undefined,
     });
@@ -165,6 +166,16 @@ export async function sessao() {
 
 /** Token para chamar o banco. Quem acessar tabelas usa isto; nunca guarde cópia. */
 export async function tokenAtual() { return (await sessao())?.access_token || null; }
+
+/**
+ * Chamada ao banco (PostgREST) com o token de quem está logado: quem decide o que volta é a RLS.
+ * Devolve { status, corpo }; sem sessão, status 401; sem rede, status 0.
+ */
+export async function api(caminho, { metodo, corpo, extra } = {}) {
+  const token = await tokenAtual();
+  if (!token) return { status: 401, corpo: null };
+  return http(caminho, { metodo, corpo, token, extra });
+}
 
 // ---------------------------------------------------------------- navegação e guarda
 /**
