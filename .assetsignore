@@ -12,6 +12,9 @@ serve.json
 .assetsignore
 *.md
 supabase
-vemax-skills
 scripts
 .claude
+iniciar.sh
+iniciar.cmd
+.nvmrc
+.gitattributes

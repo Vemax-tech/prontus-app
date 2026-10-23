@@ -23,8 +23,10 @@ Uma faixa no topo diz isso o tempo todo, de propósito, e o botão **Reiniciar d
 
 ### Rodar
 
+Com o Node 20+ instalado, um comando instala tudo e inicia: `iniciar.cmd` (Windows), `./iniciar.sh` (macOS/Linux) ou `npm start`. Pré-requisitos, dependências, login real com Docker e solução de problemas: [`docs/instalacao.md`](docs/instalacao.md).
+
 ```bash
-npm run dev      # servidor estático em http://localhost:3000
+npm run dev      # servidor estático (sem dependências) em http://localhost:3000
 npm run check    # verificação estática (sintaxe, imports, páginas, segurança, tokens) + paleta
 npm run cores    # só a paleta: contraste, daltonismo, etiquetas e rampa, nos dois temas
 npm install      # só na primeira vez, para os testes (jsdom)
