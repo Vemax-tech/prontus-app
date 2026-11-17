@@ -45,6 +45,8 @@ for (const f of js) {
 for (const f of js) {
   const txt = readFileSync(f, 'utf8');
   for (const m of txt.matchAll(/(?:from|import)\s*\(?\s*['"](\.[^'"]+)['"]/g)) {
+    // config.local.js é opcional (gitignored, só existe com a stack local): auth.js o importa dentro de try/catch.
+    if (/\.local\.js$/.test(m[1])) continue;
     const alvo = path.resolve(path.dirname(f), m[1]);
     if (!existsSync(alvo)) falha(`import quebrado em ${rel(f)}: ${m[1]}`);
   }
