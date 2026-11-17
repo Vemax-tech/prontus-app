@@ -61,7 +61,8 @@ export const linkSeguro = (url, texto) => (urlValida(url)
 export function toast(msg, err = false) {
   let box = document.querySelector('.toasts');
   if (!box) { box = h('div', { class: 'toasts', role: 'status' }); document.body.append(box); }
-  const t = h('div', { class: 'toast' + (err ? ' err' : '') }, msg);
+  // Erro é urgente (role=alert interrompe o leitor de tela); aviso comum é educado (herda o status do contêiner).
+  const t = h('div', { class: 'toast' + (err ? ' err' : ''), role: err ? 'alert' : null }, msg);
   box.append(t); setTimeout(() => t.remove(), 4200);
 }
 
