@@ -5,11 +5,11 @@
 #
 # A política de conteúdo (CSP) é deliberadamente fechada. A única conversa com servidor é o login
 # (Supabase Auth + a tabela de perfis), então `connect-src` libera o próprio site e o Supabase —
-# TROQUE `https://*.supabase.co` pelo endereço exato do seu projeto (ou domínio próprio) para
+# TROQUE `https://fgbqzcqvmdfldiaenkhv.supabase.co` pelo endereço exato do seu projeto (ou domínio próprio) para
 # liberar só ele. Os dados do fluxo seguem em memória; quando forem para o banco, é o mesmo
 # endereço. `form-action 'none'`: o formulário de login é enviado por script, nunca por navegação.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://fgbqzcqvmdfldiaenkhv.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'; upgrade-insecure-requests
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Cross-Origin-Opener-Policy: same-origin

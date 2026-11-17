@@ -57,7 +57,9 @@ async function http(caminho, { metodo = 'GET', corpo, token, extra } = {}) {
     const r = await fetch(c.url + caminho, {
       method: metodo, signal: ctl.signal, cache: 'no-store', credentials: 'omit',
       headers: {
-        apikey: c.anonKey, authorization: `Bearer ${token || c.anonKey}`,
+        // Chave publicável nova (sb_publishable_…) não é JWT: vai só em `apikey`; Bearer é só para JWT.
+        apikey: c.anonKey,
+        ...(token || c.anonKey.startsWith('eyJ') ? { authorization: `Bearer ${token || c.anonKey}` } : {}),
         ...(corpo ? { 'content-type': 'application/json' } : {}),
         ...extra,
       },

@@ -7,4 +7,4 @@
 // Preencha com os valores de Project Settings → API do seu projeto Supabase, e inclua o endereço
 // no `connect-src` do arquivo _headers. Em desenvolvimento local, `node supabase/local/preparar.mjs`
 // gera js/config.local.js, que tem prioridade em localhost e nunca é versionado.
-export default { url: '', anonKey: '' };
+export default { url: 'https://fgbqzcqvmdfldiaenkhv.supabase.co', anonKey: 'sb_publishable_PqGO3zmuoQuJa0t5CILk9Q_UqJM_lgI' };
